@@ -4,8 +4,5 @@ export type Participant = {
 };
 
 export function createParticipant(id: string, name: string): Participant {
-    return {
-        id,
-        name,
-    };
+    return { id, name };
 }

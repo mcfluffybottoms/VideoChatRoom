@@ -2,10 +2,11 @@
     "name": "server",
     "version": "1.0.0",
     "description": "",
-    "main": "index.js",
+    "type": "module",
+    "main": "index.ts",
     "scripts": {
-        "dev": "nodemon src/index.js",
-        "start": "node src/index.js"
+        "dev": "tsx  src/index.ts",
+        "start": "tsx  src/index.ts"
     },
     "keywords": [],
     "author": "",
@@ -17,6 +18,9 @@
     "devDependencies": {
         "@types/express": "^5.0.6",
         "@types/node": "^26.6.1",
-        "nodemon": "^3.1.14"
+        "nodemon": "^3.1.14",
+        "ts-node": "^10.9.2",
+        "tsx": "^4.23.13",
+        "typescript": "^7.0.2"
     }
 }

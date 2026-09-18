@@ -1,58 +1,95 @@
-import type { Participant } from './Participant.js';
+import crypto from 'crypto';
+
+import type { Participant } from './Participant';
+
+import { addMessage } from '../data/message-repository';
+
+import type { RoomHistoryEntry } from './ChatMessage';
 
 const MAX_PARTICIPANT_COUNT = 4;
 
 export enum HistoryStatus {
     ROOM_FULL,
     ALREADY_JOINED,
+    NONE_EXIST,
     ACCEPTED,
+    LEFT,
 }
 
-export type RoomHistoryEntry = {
+export type JoinResult = {
     status: HistoryStatus;
-    id: string;
+    historyEntry: RoomHistoryEntry;
 };
 
-type JoinResult = {
-    status: HistoryStatus;
-    room: Room;
-};
+export class Room {
+    constructor(
+        public id: string,
+        public participants: Map<string, Participant> = new Map(),
+    ) {}
 
-export type Room = {
-    id: string;
-    participants: Map<string, Participant>;
-    history: RoomHistoryEntry[];
-};
+    join(participant: Participant): JoinResult {
+        let status: HistoryStatus;
 
-export function join(room: Room, newP: Participant): JoinResult {
-    let history = [...room.history];
-    let participants: Map<string, Participant>;
-    let status: HistoryStatus;
+        if (this.participants.size >= MAX_PARTICIPANT_COUNT) {
+            status = HistoryStatus.ROOM_FULL;
+        } else if (this.participants.has(participant.id)) {
+            status = HistoryStatus.ALREADY_JOINED;
+        } else {
+            status = HistoryStatus.ACCEPTED;
 
-    if (room.participants.size >= MAX_PARTICIPANT_COUNT) {
-        status = HistoryStatus.ROOM_FULL;
-        participants = room.participants;
-    } else if (room.participants.has(newP.id)) {
-        status = HistoryStatus.ALREADY_JOINED;
-        participants = room.participants;
-    } else {
-        status = HistoryStatus.ACCEPTED;
-        participants = new Map(room.participants);
-        participants.set(newP.id, newP);
+            this.participants.set(participant.id, participant);
+        }
+
+        const historyEntry: RoomHistoryEntry = {
+            type: 'system',
+            status,
+            id: crypto.randomUUID(),
+            participantId: participant.id,
+            participantName: participant.name,
+            roomId: this.id,
+            timestamp: Date.now(),
+        };
+
+        if (status === HistoryStatus.ACCEPTED) {
+            addMessage(historyEntry);
+        }
+
+        return {
+            status,
+            historyEntry,
+        };
     }
 
-    history.push({
-        status,
-        id: newP.id,
-    });
+    leave(participantId: string): JoinResult {
+        const participant = this.participants.get(participantId);
 
-    const newRoom = {
-        ...room,
-        participants,
-        history,
-    };
-    return {
-        status,
-        room: newRoom,
-    };
+        let status: HistoryStatus;
+
+        if (!participant) {
+            status = HistoryStatus.NONE_EXIST;
+        } else {
+            status = HistoryStatus.LEFT;
+
+            this.participants.delete(participantId);
+        }
+
+        const historyEntry: RoomHistoryEntry = {
+            type: 'system',
+            status,
+            id: crypto.randomUUID(),
+            participantId,
+            participantName: participant?.name ?? 'Unknown user',
+            roomId: this.id,
+            timestamp: Date.now(),
+        };
+
+        if (status === HistoryStatus.LEFT) {
+            addMessage(historyEntry);
+        }
+
+        return {
+            status,
+            historyEntry,
+        };
+    }
 }

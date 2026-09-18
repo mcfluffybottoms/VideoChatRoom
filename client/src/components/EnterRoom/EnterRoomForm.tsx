@@ -1,13 +1,21 @@
 import { useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
 
 import { MAX_NAME_LENGTH, validateName } from '../../utils/nameValidation';
 import { NameValidationResult } from '../../utils/nameValidation';
 
-export default function StartScreenForm() {
+type EnterRoomFormProps = {
+    onEnter: (name: string) => void;
+};
+
+function EnterRoomForm({ onEnter }: EnterRoomFormProps) {
+    const { roomId } = useParams();
+
     const [name, setName] = useState('');
     const [error, setError] = useState('');
+    const navigate = useNavigate();
 
-    const handleSubmit = async (event) => {
+    const handleSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
         event.preventDefault();
 
         // name validation
@@ -24,23 +32,22 @@ export default function StartScreenForm() {
             case NameValidationResult.Valid:
         }
 
-        // create room
-        const response = await fetch('/room', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ name: name.trim() }),
-        });
+        // get room
+        if (!roomId) {
+            setError('Room does not exist.');
+            return;
+        }
+        const response = await fetch(`/api/room/${roomId}`);
 
         if (!response.ok) {
-            setError(`Faield to create a room.`);
+            setError(`Room does not exist.`);
             return;
         }
 
-        const { roomId } = await response.json();
+        sessionStorage.setItem(`roomName:${roomId}`, result[1]);
+        onEnter(result[1]);
 
-        window.location.href = `/room/${roomId}`;
+        navigate(`/room/${roomId}`);
     };
 
     return (
@@ -52,7 +59,8 @@ export default function StartScreenForm() {
 
             {error && <div>{error}</div>}
 
-            <button type="submit">Создать комнату</button>
+            <button type="submit">Зайти в комнату</button>
         </form>
     );
 }
+export default EnterRoomForm

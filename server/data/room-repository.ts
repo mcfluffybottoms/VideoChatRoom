@@ -1,4 +1,4 @@
-import type { Room } from '../models/Room.js';
+import { Room } from '../models/Room';
 
 const rooms = new Map<string, Room>();
 
@@ -7,23 +7,19 @@ export function getRoom(roomId: string): Room | undefined {
 }
 
 export function createRoom(roomId: string): Room {
-    const room: Room = {
-        id: roomId,
-        participants: new Map(),
-        history: [],
-    };
-
+    const room: Room = new Room(roomId);
     rooms.set(roomId, room);
-
     return room;
 }
 
 export function getOrCreateRoom(roomId: string): Room {
     const existingRoom = rooms.get(roomId);
-
     if (existingRoom) {
         return existingRoom;
     }
-
     return createRoom(roomId);
+}
+
+export function deleteRoom(roomId: string): boolean {
+    return rooms.delete(roomId);
 }
