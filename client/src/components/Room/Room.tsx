@@ -7,6 +7,7 @@ import VideoGrid from './VideoGrid';
 import { Participant, RoomHistoryEntry } from '../../commons/dto';
 import MessageList from './MessageList';
 import { isWebRTCSupported } from '../../commons/webrtc';
+import { useMediaDevices } from '../../hooks/useMediaDevices';
 
 const MAX_MESSAGE_LENGTH = 500;
 
@@ -17,34 +18,37 @@ function Room() {
     const [participants, setParticipants] = useState<Participant[]>([]);
     const [messages, setMessages] = useState<RoomHistoryEntry[]>([]);
     const [text, setText] = useState('');
-    const [error, setError] = useState('');
     const [selfId, setSelfId] = useState('');
 
-    // copy url
-    const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>(
-        'idle',
-    );
-    async function handleCopyRoomUrl() {
-        if (!navigator.clipboard) {
-            setCopyStatus('error');
-            return;
-        }
+    // banner for errors
+    type BannerStatus = {
+        type: 'success' | 'error';
+        message: string;
+    } | null;
 
+    const [banner, setBanner] = useState<BannerStatus>(null);
+    let oneTimeBanner = null;
+
+    // copy url
+    async function handleCopyRoomUrl() {
         try {
             await navigator.clipboard.writeText(window.location.href);
-            setCopyStatus('success');
-        } catch {
-            setCopyStatus('error');
-        }
 
-        setTimeout(() => {
-            setCopyStatus('idle');
-        }, 2000);
+            setBanner({
+                type: 'success',
+                message: 'Ссылка скопирована в буфер обмена!',
+            });
+        } catch {
+            setBanner({
+                type: 'error',
+                message: 'Не удалось скопировать ссылку!',
+            });
+        }
     }
 
+    // add socket
     type RoomError = 'full' | 'server' | null;
     const [roomError, setRoomError] = useState<RoomError>(null);
-
     useEffect(() => {
         if (!roomId) {
             navigate('/');
@@ -63,8 +67,20 @@ function Room() {
             setSelfId(selfId);
             setParticipants(participants);
             setMessages(history);
-            setError('');
             setRoomError(null);
+        };
+
+        const offSockets = () => {
+            socket.off('room:joined', handleJoined);
+            socket.off('room:participants', handleParticipants);
+            socket.off('room:message', handleMessage);
+            socket.off('room:history', handleMessage);
+            socket.off('room:full', handleRoomFull);
+            socket.off('room:already_joined', handleAlreadyJoined);
+            socket.off('room:message_rate_limited', handleRateLimited);
+            socket.off('room:none_exist', handleRoomNotFound);
+            socket.off('connect_error', handleConnectError);
+            socket.off('connect', joinRoom);
         };
 
         const handleParticipants = ({
@@ -84,15 +100,24 @@ function Room() {
         };
 
         const handleAlreadyJoined = () => {
-            setError('Вы уже в комнате.');
+            setBanner({
+                type: 'error',
+                message: 'Вы уже в комнате.',
+            });
         };
 
         const handleRateLimited = () => {
-            setError('Подождите, прежде чем слать новое сообщение.');
+            setBanner({
+                type: 'error',
+                message: 'Подождите, прежде чем слать новое сообщение.',
+            });
         };
 
         const handleRoomNotFound = () => {
-            setError('Такой комнаты нет.');
+            setBanner({
+                type: 'error',
+                message: 'Такой комнаты нет.',
+            });
         };
 
         const handleConnectError = (error: Error) => {
@@ -107,10 +132,10 @@ function Room() {
             });
         };
 
+        offSockets();
         socket.on('room:joined', handleJoined);
         socket.on('room:participants', handleParticipants);
         socket.on('room:message', handleMessage);
-        socket.on('room:history', handleMessage);
         socket.on('room:full', handleRoomFull);
         socket.on('room:already_joined', handleAlreadyJoined);
         socket.on('room:message_rate_limited', handleRateLimited);
@@ -125,18 +150,7 @@ function Room() {
             socket.connect();
         }
 
-        return () => {
-            socket.off('room:joined', handleJoined);
-            socket.off('room:participants', handleParticipants);
-            socket.off('room:message', handleMessage);
-            socket.off('room:history', handleMessage);
-            socket.off('room:full', handleRoomFull);
-            socket.off('room:already_joined', handleAlreadyJoined);
-            socket.off('room:message_rate_limited', handleRateLimited);
-            socket.off('room:none_exist', handleRoomNotFound);
-            socket.off('connect_error', handleConnectError);
-            socket.off('connect', joinRoom);
-        };
+        return offSockets;
     }, [roomId, navigate]);
 
     function handleSubmitMessage(event: React.SubmitEvent<HTMLFormElement>) {
@@ -147,18 +161,36 @@ function Room() {
             return;
         }
         if (normalizedText.length > MAX_MESSAGE_LENGTH) {
-            setError(
-                `Сообщение слишком длинное. Максимум возможно ${MAX_MESSAGE_LENGTH} символов.`,
-            );
+            setBanner({
+                type: 'error',
+                message: `Сообщение слишком длинное. Максимум возможно ${MAX_MESSAGE_LENGTH} символов.`,
+            });
             return;
         }
 
-        setError('');
         socket.emit('room:message', {
             roomId,
             text: normalizedText,
         });
         setText('');
+    }
+
+    // check webrtc compability
+    const isSupported = isWebRTCSupported();
+    const { stream, error: mediaError } = useMediaDevices();
+
+    if(!isSupported) {
+        oneTimeBanner = {
+            type: 'error',
+            message: "WebRTC недоступен в этом браузере.",
+        }
+    } else {
+        if (mediaError) {
+            oneTimeBanner = {
+                type: 'error',
+                message: mediaError,
+            }
+        }
     }
 
     if (roomError === 'full') {
@@ -188,35 +220,27 @@ function Room() {
         );
     }
 
-    // check webrtc compability
-    const isSupported = isWebRTCSupported();
+    const currentBanner = banner || oneTimeBanner;
 
     return (
         <div>
-            <div>
+            <div className="room-header">
                 <h1>Room</h1>
                 <p>Room ID: {roomId}</p>
                 <button type="button" onClick={handleCopyRoomUrl}>
                     Скопировать ссылку
                 </button>
 
-                {copyStatus !== 'idle' && (
+                {currentBanner && (
                     <div
-                        className={`copy-banner copy-banner-${copyStatus}`}
-                        role="status"
+                        className={`banner banner-${currentBanner.type}`}
+                        role={currentBanner.type === 'error' ? 'alert' : 'status'}
                     >
-                        {copyStatus === 'success'
-                            ? 'Ссылка скопирована в буфер обмена.'
-                            : 'Не удалось скопировать ссылку. Проверьте разрешение на доступ к буферу обмена.'}
+                        {currentBanner.message}
                     </div>
                 )}
 
-                {error && (
-                    <div className="room-error" role="alert">
-                        {error}
-                    </div>
-                )}
-                {isSupported && (
+                {!isSupported && (
                     <div className="room-error" role="alert">
                         Ваш браузер не поддерживает WebRTC. Используйте
                         современный браузер.

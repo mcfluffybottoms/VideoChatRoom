@@ -130,21 +130,34 @@ export function joinRoom(
     participant: Participant,
 ): boolean {
     const result = room.join(participant);
+
     if (result.status === HistoryStatus.ROOM_FULL) {
         socket.emit('room:full');
         return false;
     }
+
     if (result.status === HistoryStatus.ALREADY_JOINED) {
         socket.emit('room:already_joined');
         return false;
     }
+
+    const history = getMessages(room.id);
+    const joinMessage = history[history.length - 1];
+
+    socket.join(room.id);
+
     socket.emit('room:joined', {
         selfId: socket.id,
         participants: Array.from(room.participants.values()),
-        history: getMessages(room.id),
+        history,
     });
 
+    if (joinMessage?.type === 'system') {
+        socket.to(room.id).emit('room:message', joinMessage);
+    }
+
     broadcastParticipants(io, room);
+
     return true;
 }
 
@@ -155,18 +168,26 @@ export function leaveRoom(
     participantId: string,
 ): boolean {
     const result = room.leave(participantId);
+
     if (result.status === HistoryStatus.NONE_EXIST) {
         socket.emit('room:none_exist');
         return false;
     }
+
+    const history = getMessages(room.id);
+    const leaveMessage = history[history.length - 1];
 
     socket.leave(room.id);
 
     socket.emit('room:left', {
         selfId: socket.id,
         participants: Array.from(room.participants.values()),
-        history: getMessages(room.id),
+        history,
     });
+
+    if (leaveMessage?.type === 'system') {
+        io.to(room.id).emit('room:message', leaveMessage);
+    }
 
     broadcastParticipants(io, room);
     deleteMessageTimestamp(participantId);
@@ -180,11 +201,18 @@ export function leaveRoomNoEmit(
     participantId: string,
 ): boolean {
     const result = room.leave(participantId);
+
     if (result.status === HistoryStatus.NONE_EXIST) {
         return false;
     }
 
+    const history = getMessages(room.id);
+    const leaveMessage = history[history.length - 1];
+
     socket.leave(room.id);
+    if (leaveMessage?.type === 'system') {
+        io.to(room.id).emit('room:message', leaveMessage);
+    }
 
     broadcastParticipants(io, room);
     deleteMessageTimestamp(participantId);
