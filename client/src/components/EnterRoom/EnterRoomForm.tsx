@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 import { MAX_NAME_LENGTH, validateName } from '../../commons/name-validation';
@@ -15,33 +15,50 @@ function EnterRoomForm({ onEnter }: EnterRoomFormProps) {
     const [error, setError] = useState('');
     const navigate = useNavigate();
 
+    const [isCheckingRoom, setIsCheckingRoom] = useState(true);
+    const [roomExists, setRoomExists] = useState(false);
+    
+    useEffect(() => {
+        async function checkRoom() {
+            if (!roomId) {
+                setRoomExists(false);
+                setIsCheckingRoom(false);
+                return;
+            }
+            try {
+                const response = await fetch(`/api/room/${roomId}`);
+                setRoomExists(response.ok);
+            } catch {
+                setRoomExists(false);
+            } finally {
+                setIsCheckingRoom(false);
+            }
+        }
+        checkRoom();
+    }, [roomId]);
+
+
     const handleSubmit = async (event: React.SubmitEvent<HTMLFormElement>) => {
         event.preventDefault();
+
+        setError('');
+        if (!roomExists) {
+            setError('Такой комнаты нет.');
+            return;
+        }
 
         // name validation
         const result = validateName(name);
         switch (result[0]) {
             case NameValidationResult.Empty:
-                setError(`Name cannot be empty.`);
+                setError(`Поле не может быть пустым.`);
                 return;
             case NameValidationResult.TooLong:
                 setError(
-                    `Name is too long. Must contain ${MAX_NAME_LENGTH} characters.`,
+                    `Имя может содержать только до ${MAX_NAME_LENGTH} символов.`,
                 );
                 return;
             case NameValidationResult.Valid:
-        }
-
-        // get room
-        if (!roomId) {
-            setError('Room does not exist.');
-            return;
-        }
-        const response = await fetch(`/api/room/${roomId}`);
-
-        if (!response.ok) {
-            setError(`Room does not exist.`);
-            return;
         }
 
         sessionStorage.setItem(`roomName:${roomId}`, result[1]);
@@ -49,6 +66,18 @@ function EnterRoomForm({ onEnter }: EnterRoomFormProps) {
 
         navigate(`/room/${roomId}`);
     };
+
+    if (isCheckingRoom) {
+        return <div>Проверка комнаты...</div>;
+    }
+
+    if (!roomExists) {
+        return (
+            <div role="alert">
+                Такой комнаты нет.
+            </div>
+        );
+    }
 
     return (
         <form onSubmit={handleSubmit}>

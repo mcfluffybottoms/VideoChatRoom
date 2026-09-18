@@ -24,7 +24,6 @@ function Room() {
     const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>(
         'idle',
     );
-
     async function handleCopyRoomUrl() {
         if (!navigator.clipboard) {
             setCopyStatus('error');
@@ -85,15 +84,15 @@ function Room() {
         };
 
         const handleAlreadyJoined = () => {
-            setError('You are already in this room.');
+            setError('Вы уже в комнате.');
         };
 
         const handleRateLimited = () => {
-            setError('You are sending messages too quickly.');
+            setError('Подождите, прежде чем слать новое сообщение.');
         };
 
         const handleRoomNotFound = () => {
-            setError('Room does not exist.');
+            setError('Такой комнаты нет.');
         };
 
         const handleConnectError = (error: Error) => {
@@ -102,8 +101,6 @@ function Room() {
         };
 
         const joinRoom = () => {
-            console.log('JOINING ROOM:', roomId);
-
             socket.emit('room:join', {
                 roomId,
                 name: sessionStorage.getItem(`roomName:${roomId}`) ?? '',
@@ -142,10 +139,6 @@ function Room() {
         };
     }, [roomId, navigate]);
 
-    useEffect(() => {
-        console.log('RENDER participants:', participants);
-    }, [participants]);
-
     function handleSubmitMessage(event: React.SubmitEvent<HTMLFormElement>) {
         event.preventDefault();
 
@@ -155,7 +148,7 @@ function Room() {
         }
         if (normalizedText.length > MAX_MESSAGE_LENGTH) {
             setError(
-                `Message is too long. Maximum length is ${MAX_MESSAGE_LENGTH} characters.`,
+                `Сообщение слишком длинное. Максимум возможно ${MAX_MESSAGE_LENGTH} символов.`,
             );
             return;
         }
@@ -200,30 +193,36 @@ function Room() {
 
     return (
         <div>
-            <h1>Room</h1>
-            <p>Room ID: {roomId}</p>
-            <button type="button" onClick={handleCopyRoomUrl}>
-                Скопировать ссылку
-            </button>
+            <div>
+                <h1>Room</h1>
+                <p>Room ID: {roomId}</p>
+                <button type="button" onClick={handleCopyRoomUrl}>
+                    Скопировать ссылку
+                </button>
 
-            {copyStatus !== 'idle' && (
-                <div
-                    className={`copy-banner copy-banner-${copyStatus}`}
-                    role="status"
-                >
-                    {copyStatus === 'success'
-                        ? 'Ссылка скопирована в буфер обмена.'
-                        : 'Не удалось скопировать ссылку. Проверьте разрешение на доступ к буферу обмена.'}
-                </div>
-            )}
+                {copyStatus !== 'idle' && (
+                    <div
+                        className={`copy-banner copy-banner-${copyStatus}`}
+                        role="status"
+                    >
+                        {copyStatus === 'success'
+                            ? 'Ссылка скопирована в буфер обмена.'
+                            : 'Не удалось скопировать ссылку. Проверьте разрешение на доступ к буферу обмена.'}
+                    </div>
+                )}
 
-            {error && <p>{error}</p>}
-            {!isSupported && (
-                <div className="room-error" role="alert">
-                    Ваш браузер не поддерживает WebRTC. Используйте современный
-                    браузер.
-                </div>
-            )}
+                {error && (
+                    <div className="room-error" role="alert">
+                        {error}
+                    </div>
+                )}
+                {isSupported && (
+                    <div className="room-error" role="alert">
+                        Ваш браузер не поддерживает WebRTC. Используйте
+                        современный браузер.
+                    </div>
+                )}
+            </div>
 
             <div className="room-content">
                 <section className="room-video">
