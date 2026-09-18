@@ -1,0 +1,143 @@
+.room {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    grid-template-rows: 1fr auto;
+    min-height: 100vh;
+}
+
+.room-content {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 16px;
+    width: 100%;
+    height: 600px;
+}
+
+.room-video {
+    min-width: 0;
+}
+
+.room-chat {
+    min-width: 0;
+    min-height: 0;
+    border-left: 1px solid #ccc;
+    padding-left: 16px;
+}
+
+/* VIDEO GRID */
+
+.video-area {
+    position: relative;
+    width: 100%;
+    height: 100%;
+}
+
+.video-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    padding: 12px;
+}
+
+.video-grid:has(.video-tile:only-child) {
+    grid-template-columns: 1fr;
+}
+
+.video-tile {
+    position: relative;
+    min-height: 240px;
+    max-width: 1024px;
+    overflow: hidden;
+    border-radius: 8px;
+    background: #222;
+}
+
+.video-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    color: white;
+    font-size: 32px;
+}
+
+.video-tile-name {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    color: white;
+}
+
+.self-view {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    width: 240px;
+    aspect-ratio: 16 / 9;
+    z-index: 10;
+}
+
+.self-view .video-tile {
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+}
+
+@media (min-width: 1024px) {
+    .video-grid-1 {
+        grid-template-columns: 1fr;
+    }
+
+    .video-grid-2 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .video-grid-3,
+    .video-grid-4 {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+/* MESSAGES */
+
+.messages-container {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.messages {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.message {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.message time {
+    margin-left: auto;
+    font-size: 12px;
+}
+
+.systemmessage {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: start;
+    color: #b0b0b08a;
+}
+
+.systemmessage-name {
+    white-space: nowrap;
+}
+
+.systemmessage time {
+    margin-left: auto;
+    font-size: 12px;
+}

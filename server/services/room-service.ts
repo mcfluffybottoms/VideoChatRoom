@@ -133,8 +133,6 @@ export function joinRoom(
         socket.emit('room:already_joined');
         return false;
     }
-    socket.join(room.id);
-
     socket.emit('room:joined', {
         selfId: socket.id,
         participants: Array.from(room.participants.values()),

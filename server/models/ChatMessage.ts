@@ -1,5 +1,3 @@
-import type { Participant } from './Participant';
-
 const MAX_MESSAGE_LENGTH = 500;
 
 export type ChatMessage = {

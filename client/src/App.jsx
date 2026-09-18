@@ -1,7 +1,6 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
 import StartScreen from './components/CreateRoom/StartScreen';
-import './App.css';
 import EnterRoom from './components/EnterRoom/EnterRoom';
 import NotFound from './components/NotFound';
 

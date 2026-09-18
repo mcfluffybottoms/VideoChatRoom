@@ -1,69 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useNavigate, useParams } from 'react-router-dom';
-
+import './Room.css';
 import { socket } from '../../config/socket';
-
-type Participant = {
-    id: string;
-    name: string;
-};
-
-enum HistoryStatus {
-    ROOM_FULL,
-    ALREADY_JOINED,
-    NONE_EXIST,
-    ACCEPTED,
-    LEFT,
-}
-
-type RoomHistoryEntry =
-    | {
-          type: 'system';
-          status: HistoryStatus;
-          id: string;
-          participantId: string;
-          participantName: string;
-          roomId: string;
-          timestamp: number;
-      }
-    | {
-          type: 'message';
-          id: string;
-          participantId: string;
-          participantName: string;
-          roomId: string;
-          text: string;
-          timestamp: number;
-      };
+import VideoGrid from './VideoGrid';
+import { Participant, RoomHistoryEntry } from '../../commons/Dto';
+import MessageList from './MessageList';
 
 const MAX_MESSAGE_LENGTH = 500;
-
-function formatTime(timestamp: number): string {
-    return new Date(timestamp).toLocaleTimeString([], {
-        hour: '2-digit',
-        minute: '2-digit',
-    });
-}
-
-function formatHistoryStatus(status: HistoryStatus): string {
-    switch (status) {
-        case HistoryStatus.ACCEPTED:
-            return 'joined the room';
-
-        case HistoryStatus.LEFT:
-            return 'left the room';
-
-        case HistoryStatus.ROOM_FULL:
-            return 'could not join because the room is full';
-
-        case HistoryStatus.ALREADY_JOINED:
-            return 'is already in the room';
-
-        case HistoryStatus.NONE_EXIST:
-            return 'was not in the room';
-    }
-}
 
 function Room() {
     const { roomId } = useParams();
@@ -73,8 +17,10 @@ function Room() {
     const [messages, setMessages] = useState<RoomHistoryEntry[]>([]);
     const [text, setText] = useState('');
     const [error, setError] = useState('');
+    const [selfId, setSelfId] = useState('');
 
-    const messagesEndRef = useRef<HTMLDivElement>(null);
+    type RoomError = 'full' | 'server' | null;
+    const [roomError, setRoomError] = useState<RoomError>(null);
 
     useEffect(() => {
         if (!roomId) {
@@ -83,15 +29,19 @@ function Room() {
         }
 
         const handleJoined = ({
+            selfId,
             participants,
             history,
         }: {
+            selfId: string;
             participants: Participant[];
             history: RoomHistoryEntry[];
         }) => {
+            setSelfId(selfId);
             setParticipants(participants);
             setMessages(history);
             setError('');
+            setRoomError(null);
         };
 
         const handleParticipants = ({
@@ -107,7 +57,7 @@ function Room() {
         };
 
         const handleRoomFull = () => {
-            setError('Room is full.');
+            setRoomError('full');
         };
 
         const handleAlreadyJoined = () => {
@@ -124,8 +74,7 @@ function Room() {
 
         const handleConnectError = (error: Error) => {
             console.error('Socket connection error:', error);
-
-            setError('Server is unavailable.');
+            setRoomError('server');
         };
 
         const joinRoom = () => {
@@ -170,12 +119,6 @@ function Room() {
     }, [roomId, navigate]);
 
     useEffect(() => {
-        messagesEndRef.current?.scrollIntoView({
-            behavior: 'smooth',
-        });
-    }, [messages]);
-
-    useEffect(() => {
         console.log('RENDER participants:', participants);
     }, [participants]);
 
@@ -201,59 +144,58 @@ function Room() {
         setText('');
     }
 
+    if (roomError === 'full') {
+        return (
+            <div className="room-error">
+                <h1>Комната заполнена</h1>
+                <p>В комнате больше нет свободных мест.</p>
+                <button onClick={() => navigate('/')}>
+                    Вернуться на главную
+                </button>
+                <button onClick={() => window.location.reload()}>
+                    Попробовать еще раз
+                </button>
+            </div>
+        );
+    }
+
+    if (roomError === 'server') {
+        return (
+            <div className="room-error">
+                <h1>Ошибка сервера</h1>
+                <p>Не удалось подключиться к серверу.</p>
+                <button onClick={() => window.location.reload()}>
+                    Повторить
+                </button>
+            </div>
+        );
+    }
+
     return (
         <div>
             <h1>Room</h1>
             <p>Room ID: {roomId}</p>
             {error && <p>{error}</p>}
-            <section>
-                <h2>Participants</h2>
-                <ul>
-                    {participants.map((participant) => (
-                        <li key={participant.id}>{participant.name}</li>
-                    ))}
-                </ul>
-            </section>
-            <section>
-                <h2>Messages</h2>
-                <div>
-                    {messages.map((entry) => {
-                        const participantName =
-                            entry.participantName ?? 'Unknown user';
 
-                        if (entry.type === 'system') {
-                            return (
-                                <div key={entry.id}>
-                                    <strong>{participantName}</strong>{' '}
-                                    {formatHistoryStatus(entry.status)}
-                                </div>
-                            );
-                        }
+            <div className="room-content">
+                <section className="room-video">
+                    <VideoGrid participants={participants} selfId={selfId} />
+                </section>
 
-                        return (
-                            <div key={entry.id}>
-                                <strong>{participantName}</strong>
+                <section className="room-chat">
+                    <MessageList messages={messages} />
+                    <form onSubmit={handleSubmitMessage}>
+                        <input
+                            value={text}
+                            maxLength={MAX_MESSAGE_LENGTH}
+                            onChange={(event) => setText(event.target.value)}
+                            placeholder="Message..."
+                        />
 
-                                <span> {formatTime(entry.timestamp)}</span>
-
-                                <p>{entry.text}</p>
-                            </div>
-                        );
-                    })}
-                    <div ref={messagesEndRef} />
-                </div>
-            </section>
-
-            <form onSubmit={handleSubmitMessage}>
-                <input
-                    value={text}
-                    maxLength={MAX_MESSAGE_LENGTH}
-                    onChange={(event) => setText(event.target.value)}
-                    placeholder="Message..."
-                />
-
-                <button type="submit">Send</button>
-            </form>
+                        <button type="submit">Send</button>
+                    </form>
+                </section>
+            </div>
         </div>
     );
 }
