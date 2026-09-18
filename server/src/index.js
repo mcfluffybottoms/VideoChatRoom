@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import router from './routes/router.ts';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -10,17 +11,14 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
-
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+app.use(router);
 
 if (process.env.NODE_ENV === 'production') {
   const clientPath = path.join(__dirname, '../../client/dist');
 
   app.use(express.static(clientPath));
 
-  app.get(/.*/, (req, res) => {
+  app.get('/', (req, res) => {
     res.sendFile(path.join(clientPath, 'index.html'));
   });
 }
