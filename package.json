@@ -1,0 +1,8 @@
+{
+    "devDependencies": {
+        "prettier": "^3.9.8"
+    },
+    "scripts": {
+        "format": "prettier --write ."
+    }
+}

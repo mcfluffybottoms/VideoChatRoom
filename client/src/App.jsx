@@ -1,8 +1,8 @@
 import StartScreen from './components/StartScreen/StartScreen';
-import './App.css'
+import './App.css';
 
 function App() {
-  return <StartScreen />;
+    return <StartScreen />;
 }
 
-export default App
+export default App;

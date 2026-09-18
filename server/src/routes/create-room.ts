@@ -1,21 +1,21 @@
 import { type Request, type Response } from 'express';
 
 type CreateUserSuccess = {
-  roomId: string;
+    roomId: string;
 };
 type CreateUserFail = {
-  error: string
+    error: string;
 };
 
-type CreateUserResponse = CreateUserSuccess | CreateUserFail
+type CreateUserResponse = CreateUserSuccess | CreateUserFail;
 
 function generateRoomId(): string {
-  return crypto.randomUUID();
+    return crypto.randomUUID();
 }
 
 export function createRoom(request: Request, response: Response) {
-  const { name } = request.body;
-  const roomId = generateRoomId();
+    const { name } = request.body;
+    const roomId = generateRoomId();
     response.status(201).json({
         roomId,
     });
