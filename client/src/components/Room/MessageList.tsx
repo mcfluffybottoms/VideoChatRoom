@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import './Room.css';
 import Message from './Message';
-import { RoomHistoryEntry } from '../../commons/Dto';
+import { RoomHistoryEntry } from '../../commons/dto';
 
 type MessagesProps = {
     messages: RoomHistoryEntry[];

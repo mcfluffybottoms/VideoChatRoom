@@ -7,9 +7,7 @@ export default function EnterRoom() {
     const { roomId } = useParams();
 
     const [name, setName] = useState(
-        roomId
-            ? sessionStorage.getItem(`roomName:${roomId}`) ?? ''
-            : '',
+        roomId ? (sessionStorage.getItem(`roomName:${roomId}`) ?? '') : '',
     );
 
     if (!name) {

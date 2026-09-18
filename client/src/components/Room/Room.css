@@ -141,3 +141,59 @@
     margin-left: auto;
     font-size: 12px;
 }
+
+/* error */
+.room-error {
+    padding: 2px;
+    margin-top: 10px;
+    margin-top: 10px;
+    color: #060606;
+    background: #ededed;
+}
+
+/* COPY BANNER */
+
+.copy-banner {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    z-index: 1000;
+
+    padding: 12px 20px;
+    border-radius: 8px;
+
+    background: #222;
+    color: white;
+
+    box-shadow: 0 4px 12px rgb(0 0 0 / 20%);
+
+    transform: translate(-50%, 0);
+    opacity: 1;
+
+    animation: copy-banner-disappear 2s ease forwards;
+}
+
+.copy-banner-success {
+    background: #1e1e1e;
+}
+
+.copy-banner-error {
+    background: #a83232;
+}
+
+@keyframes copy-banner-disappear {
+    0% {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+
+    70% {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -10px);
+    }
+}

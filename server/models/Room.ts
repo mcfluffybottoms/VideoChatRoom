@@ -30,7 +30,10 @@ export class Room {
     join(participant: Participant): JoinResult {
         let status: HistoryStatus;
 
-        if (this.participants.size >= MAX_PARTICIPANT_COUNT) {
+        if (
+            !this.participants.has(participant.id) &&
+            this.participants.size >= MAX_PARTICIPANT_COUNT
+        ) {
             status = HistoryStatus.ROOM_FULL;
         } else if (this.participants.has(participant.id)) {
             status = HistoryStatus.ALREADY_JOINED;

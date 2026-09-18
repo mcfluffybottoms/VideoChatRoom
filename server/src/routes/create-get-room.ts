@@ -10,11 +10,14 @@ export function createRoom(request: Request, response: Response) {
     const roomId = generateRoomId();
     response.status(201).json({
         roomId,
-        name
+        name,
     });
 }
 
-export function getRoomById(request: Request<{ roomId: string }>, response: Response) {
+export function getRoomById(
+    request: Request<{ roomId: string }>,
+    response: Response,
+) {
     const { roomId } = request.params;
 
     const room = getRoom(roomId);

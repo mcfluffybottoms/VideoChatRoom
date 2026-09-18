@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { MAX_NAME_LENGTH, validateName } from '../../commons/nameValidation';
-import { NameValidationResult } from '../../commons/nameValidation';
+import { MAX_NAME_LENGTH, validateName } from '../../commons/name-validation';
+import { NameValidationResult } from '../../commons/name-validation';
 
 export default function StartScreenForm() {
     const [name, setName] = useState('');

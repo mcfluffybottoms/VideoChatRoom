@@ -4,8 +4,9 @@ import { useNavigate, useParams } from 'react-router-dom';
 import './Room.css';
 import { socket } from '../../config/socket';
 import VideoGrid from './VideoGrid';
-import { Participant, RoomHistoryEntry } from '../../commons/Dto';
+import { Participant, RoomHistoryEntry } from '../../commons/dto';
 import MessageList from './MessageList';
+import { isWebRTCSupported } from '../../commons/webrtc';
 
 const MAX_MESSAGE_LENGTH = 500;
 
@@ -18,6 +19,29 @@ function Room() {
     const [text, setText] = useState('');
     const [error, setError] = useState('');
     const [selfId, setSelfId] = useState('');
+
+    // copy url
+    const [copyStatus, setCopyStatus] = useState<'idle' | 'success' | 'error'>(
+        'idle',
+    );
+
+    async function handleCopyRoomUrl() {
+        if (!navigator.clipboard) {
+            setCopyStatus('error');
+            return;
+        }
+
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+            setCopyStatus('success');
+        } catch {
+            setCopyStatus('error');
+        }
+
+        setTimeout(() => {
+            setCopyStatus('idle');
+        }, 2000);
+    }
 
     type RoomError = 'full' | 'server' | null;
     const [roomError, setRoomError] = useState<RoomError>(null);
@@ -146,7 +170,7 @@ function Room() {
 
     if (roomError === 'full') {
         return (
-            <div className="room-error">
+            <div>
                 <h1>Комната заполнена</h1>
                 <p>В комнате больше нет свободных мест.</p>
                 <button onClick={() => navigate('/')}>
@@ -161,7 +185,7 @@ function Room() {
 
     if (roomError === 'server') {
         return (
-            <div className="room-error">
+            <div>
                 <h1>Ошибка сервера</h1>
                 <p>Не удалось подключиться к серверу.</p>
                 <button onClick={() => window.location.reload()}>
@@ -171,11 +195,35 @@ function Room() {
         );
     }
 
+    // check webrtc compability
+    const isSupported = isWebRTCSupported();
+
     return (
         <div>
             <h1>Room</h1>
             <p>Room ID: {roomId}</p>
+            <button type="button" onClick={handleCopyRoomUrl}>
+                Скопировать ссылку
+            </button>
+
+            {copyStatus !== 'idle' && (
+                <div
+                    className={`copy-banner copy-banner-${copyStatus}`}
+                    role="status"
+                >
+                    {copyStatus === 'success'
+                        ? 'Ссылка скопирована в буфер обмена.'
+                        : 'Не удалось скопировать ссылку. Проверьте разрешение на доступ к буферу обмена.'}
+                </div>
+            )}
+
             {error && <p>{error}</p>}
+            {!isSupported && (
+                <div className="room-error" role="alert">
+                    Ваш браузер не поддерживает WebRTC. Используйте современный
+                    браузер.
+                </div>
+            )}
 
             <div className="room-content">
                 <section className="room-video">

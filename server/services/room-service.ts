@@ -106,7 +106,12 @@ export function addMessageToRoom(
         return false;
     }
 
-    const chatMessage = createChatMessage(socket.id, participant.name, room.id, text);
+    const chatMessage = createChatMessage(
+        socket.id,
+        participant.name,
+        room.id,
+        text,
+    );
 
     if (!chatMessage) {
         return false;

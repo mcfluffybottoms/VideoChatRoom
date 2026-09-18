@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 
-import { MAX_NAME_LENGTH, validateName } from '../../commons/nameValidation';
-import { NameValidationResult } from '../../commons/nameValidation';
+import { MAX_NAME_LENGTH, validateName } from '../../commons/name-validation';
+import { NameValidationResult } from '../../commons/name-validation';
 
 type EnterRoomFormProps = {
     onEnter: (name: string) => void;
@@ -63,4 +63,4 @@ function EnterRoomForm({ onEnter }: EnterRoomFormProps) {
         </form>
     );
 }
-export default EnterRoomForm
+export default EnterRoomForm;

@@ -1,4 +1,4 @@
-import { HistoryStatus, RoomHistoryEntry } from "../../commons/Dto";
+import { HistoryStatus, RoomHistoryEntry } from '../../commons/dto';
 
 function formatTime(timestamp: number): string {
     return new Date(timestamp).toLocaleTimeString([], {
@@ -27,14 +27,13 @@ type MessageProps = {
 };
 
 function Message({ entry }: MessageProps) {
-    const participantName =
-        entry.participantName ?? 'Unknown user';
+    const participantName = entry.participantName ?? 'Unknown user';
 
     if (entry.type === 'system') {
         return (
             <div className="systemmessage">
-                <strong></strong>{' '}
-                {participantName} {formatHistoryStatus(entry.status)}
+                <strong></strong> {participantName}{' '}
+                {formatHistoryStatus(entry.status)}
                 <time>{formatTime(entry.timestamp)}</time>
             </div>
         );
