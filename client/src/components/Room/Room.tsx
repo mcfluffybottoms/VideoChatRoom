@@ -313,6 +313,7 @@ function Room({ name }: RoomProps) {
         }
     }, [stream]);
 
+    // Handle incoming WebRTC signaling messages from the server relay.
     useEffect(() => {
         const onOffer = async ({
             from,
@@ -375,6 +376,7 @@ function Room({ name }: RoomProps) {
         };
     }, []);
 
+    // clear peer connections on unmount
     useEffect(
         () => () => {
             peerConnections.current.forEach((pc) => pc.close());
@@ -383,6 +385,7 @@ function Room({ name }: RoomProps) {
         [],
     );
 
+    // 
     async function enableRemoteAudio() {
         setAudioUnlocked(true);
         let blocked = false;
@@ -398,7 +401,9 @@ function Room({ name }: RoomProps) {
             }
         }
         setAudioNeedsGesture(blocked);
+        
     }
+
     /* 
         error handling 
     */

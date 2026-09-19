@@ -226,22 +226,85 @@ export function broadcastParticipants(io: Server, room: Room) {
     });
 }
 
-
-/** Relay WebRTC signaling only between members of the same in-memory room. */
+// Relay WebRTC signaling only between members of the same in-memory room.
 function registerSignalingInteractions(io: Server, socket: Socket) {
-    const relay = (event: 'webrtc:offer' | 'webrtc:answer' | 'webrtc:ice') =>
-        socket.on(event, (payload: { to?: string; description?: unknown; candidate?: unknown }) => {
-            const roomId = socket.data.roomId as string | undefined;
-            const room = roomId ? getRoom(roomId) : undefined;
-            const targetId = payload?.to;
-            if (!room || !room.participants.has(socket.id) || !targetId ||
-                targetId === socket.id || !room.participants.has(targetId)) return;
-            const forwarded = event === 'webrtc:ice'
-                ? { from: socket.id, candidate: payload.candidate }
-                : { from: socket.id, description: payload.description };
-            io.to(targetId).emit(event, forwarded);
+    socket.on('webrtc:offer', (payload) => {
+        relayWebRTC(io, socket, 'webrtc:offer', payload);
+    });
+
+    socket.on('webrtc:answer', (payload) => {
+        relayWebRTC(io, socket, 'webrtc:answer', payload);
+    });
+
+    socket.on('webrtc:ice', (payload) => {
+        relayWebRTC(io, socket, 'webrtc:ice', payload);
+    });
+
+    socket.on('webrtc:media_state', (payload) => {
+        shareMediaState(io, socket, payload);
+    });
+}
+
+function relayWebRTC(
+    io: Server,
+    socket: Socket,
+    event: 'webrtc:offer' | 'webrtc:answer' | 'webrtc:ice',
+    payload: {
+        to?: string;
+        description?: unknown;
+        candidate?: unknown;
+    },
+) {
+    const roomId = socket.data.roomId as string | undefined;
+    const room = roomId ? getRoom(roomId) : undefined;
+    const targetId = payload?.to;
+
+    if (
+        !room ||
+        !room.participants.has(socket.id) ||
+        !targetId ||
+        targetId === socket.id ||
+        !room.participants.has(targetId)
+    ) {
+        return;
+    }
+
+    const forwarded =
+        event === 'webrtc:ice'
+            ? {
+                  from: socket.id,
+                  candidate: payload.candidate,
+              }
+            : {
+                  from: socket.id,
+                  description: payload.description,
+              };
+
+    io.to(targetId).emit(event, forwarded);
+}
+
+function shareMediaState(
+    io: Server,
+    socket: Socket,
+    payload: {
+        videoEnabled?: boolean;
+        audioEnabled?: boolean;
+    },
+) {
+    const roomId = socket.data.roomId as string | undefined;
+    const room = roomId ? getRoom(roomId) : undefined;
+
+    if (!room || !room.participants.has(socket.id)) {
+        return;
+    }
+
+    for (const participantId of room.participants.keys()) {
+        if (participantId === socket.id) continue;
+
+        io.to(participantId).emit('webrtc:media_state', {
+            from: socket.id,
+            videoEnabled: payload.videoEnabled,
+            audioEnabled: payload.audioEnabled,
         });
-    relay('webrtc:offer');
-    relay('webrtc:answer');
-    relay('webrtc:ice');
+    }
 }

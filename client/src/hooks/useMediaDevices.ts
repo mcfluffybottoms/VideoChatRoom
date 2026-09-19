@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { socket } from '../config/socket';
 
 type UseMediaDevicesResult = {
     stream: MediaStream | null;
@@ -24,6 +25,11 @@ export function useMediaDevices(): UseMediaDevicesResult {
                 !navigator.mediaDevices ||
                 !navigator.mediaDevices.getUserMedia
             ) {
+                socket.emit('webrtc:media_state', {
+                    videoEnabled: false,
+                    audioEnabled: false,
+                });
+
                 return;
             }
 
@@ -35,32 +41,41 @@ export function useMediaDevices(): UseMediaDevicesResult {
 
                 setStream(currentStream);
 
-                setIsMicrophoneEnabled(
-                    currentStream
-                        .getAudioTracks()
-                        .some(
-                            (track) =>
-                                track.readyState === 'live' && track.enabled,
-                        ),
-                );
+                const audioEnabled = currentStream
+                    .getAudioTracks()
+                    .some(
+                        (track) => track.readyState === 'live' && track.enabled,
+                    );
 
-                setIsCameraEnabled(
-                    currentStream
-                        .getVideoTracks()
-                        .some(
-                            (track) =>
-                                track.readyState === 'live' && track.enabled,
-                        ),
-                );
+                const videoEnabled = currentStream
+                    .getVideoTracks()
+                    .some(
+                        (track) => track.readyState === 'live' && track.enabled,
+                    );
+
+                setIsMicrophoneEnabled(audioEnabled);
+                setIsCameraEnabled(videoEnabled);
+
+                socket.emit('webrtc:media_state', {
+                    audioEnabled,
+                    videoEnabled,
+                });
 
                 setError('');
             } catch {
+                setIsMicrophoneEnabled(false);
+                setIsCameraEnabled(false);
+
+                socket.emit('webrtc:media_state', {
+                    audioEnabled: false,
+                    videoEnabled: false,
+                });
+
                 setError(
                     'Не удалось получить доступ к камере или микрофону. Вы можете продолжить без них.',
                 );
             }
         }
-
         requestMedia();
 
         return () => {
@@ -81,6 +96,10 @@ export function useMediaDevices(): UseMediaDevicesResult {
             if (track.kind === 'video') {
                 setIsCameraEnabled(false);
 
+                socket.emit('webrtc:media_state', {
+                    videoEnabled: false,
+                });
+
                 setError(
                     'Камера стала недоступна. Подключите камеру и проверьте разрешение в настройках браузера или операционной системы.',
                 );
@@ -88,6 +107,10 @@ export function useMediaDevices(): UseMediaDevicesResult {
 
             if (track.kind === 'audio') {
                 setIsMicrophoneEnabled(false);
+
+                socket.emit('webrtc:media_state', {
+                    audioEnabled: false,
+                });
 
                 setError(
                     'Микрофон стал недоступен. Подключите микрофон и проверьте разрешение в настройках браузера или операционной системы.',
@@ -114,6 +137,32 @@ export function useMediaDevices(): UseMediaDevicesResult {
         }
 
         function handleDeviceChange() {
+            if (!stream) return;
+
+            const audioEnabled = stream
+                .getAudioTracks()
+                .some(
+                    (track) =>
+                        track.readyState === 'live' &&
+                        track.enabled,
+                );
+
+            const videoEnabled = stream
+                .getVideoTracks()
+                .some(
+                    (track) =>
+                        track.readyState === 'live' &&
+                        track.enabled,
+                );
+
+            setIsMicrophoneEnabled(audioEnabled);
+            setIsCameraEnabled(videoEnabled);
+
+            socket.emit('webrtc:media_state', {
+                audioEnabled,
+                videoEnabled,
+            });
+
             setError(
                 'Устройство камеры или микрофона изменилось. Проверьте подключение устройства и разрешения браузера.',
             );
@@ -130,7 +179,7 @@ export function useMediaDevices(): UseMediaDevicesResult {
                 handleDeviceChange,
             );
         };
-    }, []);
+    }, [stream]);
 
     function toggleMicrophone(): boolean | null {
         if (!stream) {
@@ -144,6 +193,9 @@ export function useMediaDevices(): UseMediaDevicesResult {
         });
 
         setIsMicrophoneEnabled(enabled);
+        socket.emit('webrtc:media_state', {
+            audioEnabled: enabled,
+        });
 
         return enabled;
     }
@@ -179,6 +231,9 @@ export function useMediaDevices(): UseMediaDevicesResult {
             });
 
             setIsCameraEnabled(true);
+            socket.emit('webrtc:media_state', {
+                videoEnabled: true,
+            });
             setError('');
 
             return true;
@@ -197,10 +252,13 @@ export function useMediaDevices(): UseMediaDevicesResult {
         }
 
         stream.getVideoTracks().forEach((track) => {
-            track.stop();
+            track.enabled = false;
         });
 
         setIsCameraEnabled(false);
+        socket.emit('webrtc:media_state', {
+            videoEnabled: false,
+        });
 
         return true;
     }
