@@ -1,0 +1,31 @@
+# VideoChatRoom
+
+## Запуск локально
+
+```bash
+npm --prefix server install
+npm --prefix client install
+npm --prefix server run dev
+# в отдельном терминале
+npm --prefix client run dev
+```
+
+## Docker
+
+Создайте `.env` (необязательно): `HOST_PORT=3000`, затем:
+
+```bash
+docker compose up --build -d
+docker compose logs -f web
+docker compose down
+```
+
+Для обновления задайте нужный tag образа в вашем registry, разверните его и при проблеме верните предыдущий tag. Compose-сервис должен работать в одной реплике: комнаты и сообщения хранятся только в памяти процесса. Перезапуск/пересоздание контейнера удаляет активные комнаты и историю.
+
+## HTTPS
+
+Для доступа из сети публикуйте приложение через reverse proxy с TLS termination (например, Nginx/Caddy/Ingress). Проксируйте HTTP и WebSocket upgrade на внутренний порт 3000. `HOST_PORT` — внешний порт Docker; `PORT` внутри контейнера по умолчанию 3000. Не запускайте несколько реплик без отдельного общего хранилища/маршрутизации состояния.
+
+## WebRTC
+
+Для ICE используется только публичный Google STUN `stun:stun.l.google.com:19302`. TURN/SFU не предусмотрены; при невозможности прямого P2P-соединения соответствующая пара останется без медиа.

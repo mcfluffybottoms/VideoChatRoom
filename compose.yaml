@@ -1,9 +1,11 @@
 services:
-    web:
-        build: .
-        working_dir: /app/server
-        ports:
-            - '${PORT}:3000'
-        command: node src/index.js
-        env_file:
-            - .env
+  web:
+    build: .
+    working_dir: /app/server
+    ports:
+      - "${HOST_PORT:-3000}:3000"
+    environment:
+      PORT: 3000
+      NODE_ENV: production
+    restart: unless-stopped
+    # Keep exactly one replica: room/chat state is held in process memory.

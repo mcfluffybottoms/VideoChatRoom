@@ -24,6 +24,7 @@ export function registerSocketHandlers(io: Server, socket: Socket) {
 
     registerRoomInteractions(io, socket);
     registerMessagingInteractions(io, socket);
+    registerSignalingInteractions(io, socket);
 }
 
 function registerRoomInteractions(io: Server, socket: Socket) {
@@ -223,4 +224,24 @@ export function broadcastParticipants(io: Server, room: Room) {
     io.to(room.id).emit('room:participants', {
         participants: Array.from(room.participants.values()),
     });
+}
+
+
+/** Relay WebRTC signaling only between members of the same in-memory room. */
+function registerSignalingInteractions(io: Server, socket: Socket) {
+    const relay = (event: 'webrtc:offer' | 'webrtc:answer' | 'webrtc:ice') =>
+        socket.on(event, (payload: { to?: string; description?: unknown; candidate?: unknown }) => {
+            const roomId = socket.data.roomId as string | undefined;
+            const room = roomId ? getRoom(roomId) : undefined;
+            const targetId = payload?.to;
+            if (!room || !room.participants.has(socket.id) || !targetId ||
+                targetId === socket.id || !room.participants.has(targetId)) return;
+            const forwarded = event === 'webrtc:ice'
+                ? { from: socket.id, candidate: payload.candidate }
+                : { from: socket.id, description: payload.description };
+            io.to(targetId).emit(event, forwarded);
+        });
+    relay('webrtc:offer');
+    relay('webrtc:answer');
+    relay('webrtc:ice');
 }
