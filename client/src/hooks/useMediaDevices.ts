@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+import { socket } from '../config/socket';
 
 type UseMediaDevicesResult = {
     stream: MediaStream | null;
@@ -17,39 +19,6 @@ type UseMediaDevicesResult = {
     error: string;
 };
 
-function describeMediaError(
-    error: unknown,
-    kind: 'audio' | 'video',
-): string {
-    if (!(error instanceof Error)) {
-        return kind === 'video'
-            ? 'Не удалось получить доступ к камере.'
-            : 'Не удалось получить доступ к микрофону.';
-    }
-
-    switch (error.name) {
-        case 'NotAllowedError':
-        case 'SecurityError':
-            return kind === 'video'
-                ? 'Доступ к камере запрещён. Разрешите его в настройках браузера и обновите страницу.'
-                : 'Доступ к микрофону запрещён. Разрешите его в настройках браузера и обновите страницу.';
-        case 'NotFoundError':
-        case 'OverconstrainedError':
-            return kind === 'video'
-                ? 'Камера не найдена. Подключите устройство или выберите его в настройках.'
-                : 'Микрофон не найден. Подключите устройство или выберите его в настройках.';
-        case 'NotReadableError':
-        case 'AbortError':
-            return kind === 'video'
-                ? 'Камера занята другим приложением. Закройте его и попробуйте снова.'
-                : 'Микрофон занят другим приложением. Закройте его и попробуйте снова.';
-        default:
-            return kind === 'video'
-                ? 'Не удалось получить доступ к камере.'
-                : 'Не удалось получить доступ к микрофону.';
-    }
-}
-
 export function useMediaDevices(): UseMediaDevicesResult {
     const [stream, setStream] = useState<MediaStream | null>(null);
 
@@ -61,112 +30,125 @@ export function useMediaDevices(): UseMediaDevicesResult {
 
     const [error, setError] = useState('');
 
-    const mountedRef = useRef(true);
-
-    useEffect(() => {
-        return () => {
-            mountedRef.current = false;
-        };
-    }, []);
-
-    /**
-     * Rebuilds the outgoing stream. Always returns a NEW MediaStream so
-     * downstream effects (replaceTrack in useRoomWebRTC) re-run.
-     */
-    const rebuildStream = useCallback(() => {
-        setStream((current) => {
-            const tracks = current?.getTracks() ?? [];
-            return tracks.length ? new MediaStream(tracks) : null;
-        });
-    }, []);
+    const cameraWasUnavailable = useRef(false);
+    const microphoneWasUnavailable = useRef(false);
 
     /*
      * Initial media setup.
      *
-     * Camera and microphone are requested separately, so a failure of
-     * one does not prevent using the other. A denial leaves the user in
-     * the room with the corresponding device disabled.
+     * Camera and microphone are requested separately,
+     * so failure of one device does not prevent using the other.
      */
     useEffect(() => {
-        let cancelled = false;
-        let ownedStream: MediaStream | null = null;
+        let currentStream: MediaStream | null = null;
 
         async function requestMedia() {
-            if (!navigator.mediaDevices?.getUserMedia) {
-                setError('Браузер не поддерживает доступ к медиа-устройствам.');
+            if (
+                !navigator.mediaDevices ||
+                !navigator.mediaDevices.getUserMedia
+            ) {
+                socket.emit('webrtc:media_state', {
+                    videoEnabled: false,
+                    audioEnabled: false,
+                });
+
                 return;
             }
 
-            const errors: string[] = [];
+            let videoStream: MediaStream | null = null;
+            let audioStream: MediaStream | null = null;
 
-            let videoTrack: MediaStreamTrack | null = null;
-            let audioTrack: MediaStreamTrack | null = null;
-
+            // Camera
             try {
-                const s = await navigator.mediaDevices.getUserMedia({
+                videoStream = await navigator.mediaDevices.getUserMedia({
                     video: true,
                 });
-                videoTrack = s.getVideoTracks()[0] ?? null;
-            } catch (err) {
-                errors.push(describeMediaError(err, 'video'));
+            } catch {
+                cameraWasUnavailable.current = true;
             }
 
+            // Microphone
             try {
-                const s = await navigator.mediaDevices.getUserMedia({
+                audioStream = await navigator.mediaDevices.getUserMedia({
                     audio: true,
                 });
-                audioTrack = s.getAudioTracks()[0] ?? null;
-            } catch (err) {
-                errors.push(describeMediaError(err, 'audio'));
+            } catch {
+                microphoneWasUnavailable.current = true;
             }
 
-            if (cancelled) {
-                videoTrack?.stop();
-                audioTrack?.stop();
-                return;
-            }
-
-            const tracks: MediaStreamTrack[] = [];
-            if (videoTrack) tracks.push(videoTrack);
-            if (audioTrack) tracks.push(audioTrack);
+            const tracks = [
+                ...(videoStream?.getVideoTracks() ?? []),
+                ...(audioStream?.getAudioTracks() ?? []),
+            ];
 
             if (tracks.length === 0) {
                 setStream(null);
                 setIsCameraEnabled(false);
                 setIsMicrophoneEnabled(false);
-                setIsCameraAvailable(false);
-                setIsMicrophoneAvailable(false);
-                setError(errors.join(' ') || 'Не удалось получить доступ к устройствам.');
+
+                socket.emit('webrtc:media_state', {
+                    videoEnabled: false,
+                    audioEnabled: false,
+                });
+
+                setError('Не удалось получить доступ к камере или микрофону.');
+
                 return;
             }
 
-            const combined = new MediaStream(tracks);
-            ownedStream = combined;
+            const combinedStream = new MediaStream(tracks);
 
-            setStream(combined);
-            setIsCameraAvailable(!!videoTrack);
-            setIsMicrophoneAvailable(!!audioTrack);
-            setIsCameraEnabled(!!videoTrack);
-            setIsMicrophoneEnabled(!!audioTrack);
-            setError(errors.join(' '));
+            currentStream = combinedStream;
+
+            setStream(combinedStream);
+
+            const cameraAvailable = combinedStream
+                .getVideoTracks()
+                .some((track) => track.readyState === 'live');
+
+            const microphoneAvailable = combinedStream
+                .getAudioTracks()
+                .some((track) => track.readyState === 'live');
+            setIsCameraAvailable(cameraAvailable);
+            setIsMicrophoneAvailable(microphoneAvailable);
+
+            const videoEnabled = combinedStream
+                .getVideoTracks()
+                .some((track) => track.readyState === 'live' && track.enabled);
+
+            const audioEnabled = combinedStream
+                .getAudioTracks()
+                .some((track) => track.readyState === 'live' && track.enabled);
+
+            setIsCameraEnabled(videoEnabled);
+            setIsMicrophoneEnabled(audioEnabled);
+
+            socket.emit('webrtc:media_state', {
+                videoEnabled,
+                audioEnabled,
+            });
+
+            setError('');
         }
 
         void requestMedia();
 
         return () => {
-            cancelled = true;
-            ownedStream?.getTracks().forEach((track) => track.stop());
+            currentStream?.getTracks().forEach((track) => {
+                track.stop();
+            });
         };
     }, []);
 
     /*
      * CAMERA
      *
-     * Track "ended" fires when the device disappears (unplugged, taken
-     * by the OS, permission revoked). We drop the track from the stream
-     * so downstream consumers stop trying to use it, but we DO NOT
-     * re-acquire automatically: the user must pick a device in the
-     * browser/OS settings.
+     * Detect physical camera removal.
+     *
+     * When the track ends, remove it from our MediaStream immediately.
+     * Do NOT request a replacement here: recovery must happen only after
+     * the user explicitly selects/restores a device in browser/OS settings
+     * and then enables the camera again.
      */
     useEffect(() => {
         if (!stream) {
@@ -174,40 +156,47 @@ export function useMediaDevices(): UseMediaDevicesResult {
         }
 
         const videoTrack = stream.getVideoTracks()[0];
+
         if (!videoTrack) {
             return;
         }
 
         const handleEnded = () => {
-            if (!mountedRef.current) {
-                return;
-            }
+            cameraWasUnavailable.current = true;
 
-            setStream((current) => {
-                if (!current) {
-                    return current;
-                }
-                current.removeTrack(videoTrack);
-                const next = current.getTracks();
-                return next.length ? new MediaStream(next) : null;
+            const nextStream = new MediaStream();
+            stream.getAudioTracks().forEach((track) => {
+                nextStream.addTrack(track);
             });
+
+            setStream(nextStream);
             setIsCameraAvailable(false);
             setIsCameraEnabled(false);
-            setError(
-                'Камера отключена. Выберите устройство в настройках браузера или ОС.',
-            );
+
+            socket.emit('webrtc:media_state', {
+                videoEnabled: false,
+            });
         };
 
         videoTrack.addEventListener('ended', handleEnded);
+
         return () => {
             videoTrack.removeEventListener('ended', handleEnded);
         };
-    }, [stream]);
+    }, [stream, socket]);
+
+    /*
+     * Camera recovery is intentionally manual.
+     *
+     * A browser/OS device change does not automatically call getUserMedia().
+     * The user must restore/select the camera in system/browser settings and
+     * explicitly enable it again.
+     */
 
     /*
      * MICROPHONE
      *
-     * Same as camera: drop the track on "ended", do not re-acquire.
+     * Detect physical microphone removal.
      */
     useEffect(() => {
         if (!stream) {
@@ -215,183 +204,244 @@ export function useMediaDevices(): UseMediaDevicesResult {
         }
 
         const audioTrack = stream.getAudioTracks()[0];
+
         if (!audioTrack) {
+            microphoneWasUnavailable.current = true;
             return;
         }
 
         const handleEnded = () => {
-            if (!mountedRef.current) {
-                return;
-            }
+            microphoneWasUnavailable.current = true;
 
-            setStream((current) => {
-                if (!current) {
-                    return current;
-                }
-                current.removeTrack(audioTrack);
-                const next = current.getTracks();
-                return next.length ? new MediaStream(next) : null;
-            });
             setIsMicrophoneAvailable(false);
             setIsMicrophoneEnabled(false);
-            setError(
-                'Микрофон отключён. Выберите устройство в настройках браузера или ОС.',
-            );
+
+            socket.emit('webrtc:media_state', {
+                audioEnabled: false,
+            });
         };
 
         audioTrack.addEventListener('ended', handleEnded);
+
         return () => {
             audioTrack.removeEventListener('ended', handleEnded);
         };
     }, [stream]);
 
     /*
-     * devicechange: only refresh availability flags. Never call
-     * getUserMedia here — the user restores devices manually.
+     * MICROPHONE
+     *
+     * Detect microphone device changes.
      */
     useEffect(() => {
-        if (!navigator.mediaDevices?.addEventListener) {
+        if (!navigator.mediaDevices) {
             return;
         }
 
-        const handler = async () => {
+        async function handleMicrophoneDeviceChange() {
+            if (!stream) {
+                return;
+            }
+
+            const existingAudioTrack = stream.getAudioTracks()[0];
+
+            /*
+             * Microphone is still available.
+             * Do not change its enabled state.
+             */
+            if (
+                existingAudioTrack &&
+                existingAudioTrack.readyState === 'live'
+            ) {
+                microphoneWasUnavailable.current = false;
+                return;
+            }
+
+            /*
+             * Microphone was not physically unavailable.
+             */
+            if (!microphoneWasUnavailable.current) {
+                return;
+            }
+
             try {
-                const devices =
-                    await navigator.mediaDevices.enumerateDevices();
-                if (!mountedRef.current) {
+                const newStream = await navigator.mediaDevices.getUserMedia({
+                    audio: true,
+                });
+
+                const newAudioTrack = newStream.getAudioTracks()[0];
+
+                if (!newAudioTrack) {
                     return;
                 }
-                setIsCameraAvailable(
-                    devices.some((d) => d.kind === 'videoinput'),
-                );
-                setIsMicrophoneAvailable(
-                    devices.some((d) => d.kind === 'audioinput'),
-                );
-            } catch {
-                // Ignore enumerate errors.
-            }
-        };
 
-        navigator.mediaDevices.addEventListener('devicechange', handler);
+                setStream((currentStream) => {
+                    if (!currentStream) {
+                        return newStream;
+                    }
+
+                    currentStream.addTrack(newAudioTrack);
+                    return currentStream;
+                });
+                setIsMicrophoneAvailable(true);
+                setIsMicrophoneEnabled(true);
+
+                microphoneWasUnavailable.current = false;
+
+                socket.emit('webrtc:media_state', {
+                    audioEnabled: true,
+                });
+
+                setError('');
+            } catch {
+                // Microphone is still unavailable.
+            }
+        }
+
+        navigator.mediaDevices.addEventListener(
+            'devicechange',
+            handleMicrophoneDeviceChange,
+        );
+
         return () => {
-            navigator.mediaDevices.removeEventListener('devicechange', handler);
+            navigator.mediaDevices.removeEventListener(
+                'devicechange',
+                handleMicrophoneDeviceChange,
+            );
         };
-    }, []);
+    }, [stream]);
 
     /*
      * MICROPHONE
      *
-     * Intentional ON/OFF. Releasing the device (stop) so the OS-level
-     * indicator turns off, and re-acquiring on enable.
+     * Intentional ON/OFF.
+     *
+     * We use track.enabled instead of stop().
      */
     function toggleMicrophone(): boolean | null {
         if (!stream) {
             return null;
         }
 
-        const audioTrack = stream.getAudioTracks()[0];
+        const audioTracks = stream.getAudioTracks();
 
-        // Turning OFF.
-        if (audioTrack) {
-            audioTrack.stop();
-            stream.removeTrack(audioTrack);
-            rebuildStream();
-            setIsMicrophoneEnabled(false);
-            setIsMicrophoneAvailable(false);
-            return false;
+        if (audioTracks.length === 0) {
+            return null;
         }
 
-        // Turning ON.
-        void (async () => {
-            try {
-                const s = await navigator.mediaDevices.getUserMedia({
-                    audio: true,
-                });
-                const newTrack = s.getAudioTracks()[0];
-                if (!newTrack || !mountedRef.current) {
-                    newTrack?.stop();
-                    return;
-                }
+        const enabled = !isMicrophoneEnabled;
 
-                setStream((current) => {
-                    if (!current) {
-                        return new MediaStream([newTrack]);
-                    }
-                    current.addTrack(newTrack);
-                    return new MediaStream(current.getTracks());
-                });
-                setIsMicrophoneEnabled(true);
-                setIsMicrophoneAvailable(true);
-                setError('');
-            } catch (err) {
-                if (!mountedRef.current) {
-                    return;
-                }
-                setIsMicrophoneAvailable(false);
-                setIsMicrophoneEnabled(false);
-                setError(describeMediaError(err, 'audio'));
+        audioTracks.forEach((track) => {
+            if (track.readyState === 'live') {
+                track.enabled = enabled;
             }
-        })();
+        });
 
-        return null;
+        setIsMicrophoneEnabled(enabled);
+
+        socket.emit('webrtc:media_state', {
+            audioEnabled: enabled,
+        });
+
+        return enabled;
     }
 
     /*
      * CAMERA
      *
-     * Intentional ON. Re-acquires a fresh video track. Releases the
-     * previous one if it is somehow still live.
+     *  detect camera device changes.
+     *  When the camera is physically removed, we stop the track and mark it as unavailable.
+     *  When the camera is physically restored, we can re-enable it by calling enableCamera().
+    */
+    useEffect(() => {
+        if (!navigator.mediaDevices) {
+            return;
+        }
+
+        async function handleCameraDeviceChange() {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const hasCamera = devices.some((d) => d.kind === 'videoinput');
+
+            if (hasCamera && !isCameraAvailable) {
+                setIsCameraAvailable(true);
+            } else if (!hasCamera && isCameraAvailable) {
+                setIsCameraAvailable(false);
+                setIsCameraEnabled(false);
+            }
+        }
+
+        navigator.mediaDevices.addEventListener(
+            'devicechange',
+            handleCameraDeviceChange,
+        );
+        void handleCameraDeviceChange();
+
+        return () => {
+            navigator.mediaDevices.removeEventListener(
+                'devicechange',
+                handleCameraDeviceChange,
+            );
+        };
+    }, [isCameraAvailable]);
+
+    /*
+     * CAMERA
+     *
+     * Intentional ON.
      */
     async function enableCamera(): Promise<boolean> {
         if (!navigator.mediaDevices?.getUserMedia) {
-            setError('Браузер не поддерживает доступ к камере.');
             return false;
         }
 
-        if (stream?.getVideoTracks().some((t) => t.readyState === 'live')) {
-            // Already on.
-            return true;
-        }
-
         try {
-            const s = await navigator.mediaDevices.getUserMedia({
+            const newStream = await navigator.mediaDevices.getUserMedia({
                 video: true,
             });
-            const newTrack = s.getVideoTracks()[0];
-            if (!newTrack) {
+
+            const newVideoTrack = newStream.getVideoTracks()[0];
+
+            if (!newVideoTrack) {
                 return false;
             }
 
-            if (!mountedRef.current) {
-                newTrack.stop();
-                return false;
-            }
-
-            setStream((current) => {
-                if (!current) {
-                    return new MediaStream([newTrack]);
+            setStream((currentStream) => {
+                if (!currentStream) {
+                    return newStream;
                 }
 
-                current.getVideoTracks().forEach((track) => {
-                    track.stop();
-                    current.removeTrack(track);
-                });
-                current.addTrack(newTrack);
+                const nextStream = new MediaStream();
 
-                return new MediaStream(current.getTracks());
+                currentStream.getAudioTracks().forEach((track) => {
+                    nextStream.addTrack(track);
+                });
+
+                currentStream.getVideoTracks().forEach((track) => {
+                    track.stop();
+                });
+
+                nextStream.addTrack(newVideoTrack);
+
+                return nextStream;
             });
 
             setIsCameraAvailable(true);
             setIsCameraEnabled(true);
-            setError('');
+
+            socket.emit('webrtc:media_state', {
+                videoEnabled: true,
+            });
+
             return true;
-        } catch (err) {
-            if (!mountedRef.current) {
-                return false;
-            }
+        } catch (error) {
+            console.error('[enableCamera] failed:', error);
             setIsCameraAvailable(false);
             setIsCameraEnabled(false);
-            setError(describeMediaError(err, 'video'));
+
+            socket.emit('webrtc:media_state', {
+                videoEnabled: false,
+            });
+
             return false;
         }
     }
@@ -399,33 +449,57 @@ export function useMediaDevices(): UseMediaDevicesResult {
     /*
      * CAMERA
      *
-     * Intentional OFF. Stops the track, releasing the camera physically
-     * so the OS indicator turns off. The device remains available.
+     * Intentional OFF.
+     *
+     * A new MediaStream is returned so useRoomWebRTC reconciles the video
+     * sender. The old video track is stopped because this toggle represents
+     * releasing the camera; enabling it later acquires a fresh track.
      */
     function disableCamera(): boolean {
         if (!stream) {
-            setIsCameraEnabled(false);
             return false;
         }
 
-        const videoTrack = stream.getVideoTracks()[0];
-        if (!videoTrack) {
+        const videoTracks = stream.getVideoTracks();
+
+        if (videoTracks.length === 0) {
             setIsCameraEnabled(false);
+            socket.emit('webrtc:media_state', {
+                videoEnabled: false,
+            });
             return false;
         }
 
-        // track.stop() — releases the device.
-        videoTrack.stop();
-        stream.removeTrack(videoTrack);
+        const nextStream = new MediaStream();
 
-        rebuildStream();
+        stream.getAudioTracks().forEach((track) => {
+            nextStream.addTrack(track);
+        });
+
+        videoTracks.forEach((track) => {
+            track.stop();
+        });
+
+        setStream(nextStream);
         setIsCameraEnabled(false);
-        // NOTE: isCameraAvailable stays true — the device is still there,
-        // it is just turned off.
+        // Turning the camera off releases the track, but does not mean that
+        // the physical camera disappeared. It can be acquired again explicitly.
+        setIsCameraAvailable(true);
+
+        socket.emit('webrtc:media_state', {
+            videoEnabled: false,
+        });
 
         return true;
     }
 
+    /*
+     * Availability is based on readyState,
+     * NOT on enabled.
+     *
+     * Therefore an intentionally disabled camera/microphone
+     * is still considered available.
+     */
     return {
         stream,
 

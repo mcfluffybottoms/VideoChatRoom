@@ -30,9 +30,14 @@ export function registerSocketHandlers(io: Server, socket: Socket) {
 function registerRoomInteractions(io: Server, socket: Socket) {
     socket.on('room:join', ({ roomId, name }) => {
         const room = getOrCreateRoom(roomId);
-        const participant = {
+        const participant: Participant & {
+            videoEnabled: boolean;
+            audioEnabled: boolean;
+        } = {
             id: socket.id,
             name,
+            videoEnabled: false,
+            audioEnabled: true,
         };
 
         const joined = joinRoom(io, socket, room, participant);
@@ -298,13 +303,37 @@ function shareMediaState(
         return;
     }
 
+    const participant = room.participants.get(socket.id) as
+        | (Participant & {
+              videoEnabled?: boolean;
+              audioEnabled?: boolean;
+          })
+        | undefined;
+
+    if (!participant) {
+        return;
+    }
+
+    // Persist the latest media state so users who join later receive it
+    // through room:joined / room:participants.
+    if (typeof payload.videoEnabled === 'boolean') {
+        participant.videoEnabled = payload.videoEnabled;
+    }
+
+    if (typeof payload.audioEnabled === 'boolean') {
+        participant.audioEnabled = payload.audioEnabled;
+    }
+
     for (const participantId of room.participants.keys()) {
         if (participantId === socket.id) continue;
 
         io.to(participantId).emit('webrtc:media_state', {
             from: socket.id,
-            videoEnabled: payload.videoEnabled,
-            audioEnabled: payload.audioEnabled,
+            videoEnabled: participant.videoEnabled ?? false,
+            audioEnabled: participant.audioEnabled ?? true,
         });
     }
+
+    // Keep the participant snapshot in sync for all clients.
+    broadcastParticipants(io, room);
 }

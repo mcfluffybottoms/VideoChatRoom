@@ -5,12 +5,43 @@ type VideoTileProps = {
     name: string;
     isSelf?: boolean;
     stream?: MediaStream | null;
+
+    /**
+     * Для self-тайла: включена ли локальная камера.
+     * Для remote-тайлов не используется.
+     */
+    cameraEnabled?: boolean;
+
+    /**
+     * Для self-тайла: включён ли локальный микрофон.
+     * Для remote-тайлов не используется.
+     */
     microphoneEnabled?: boolean;
+
+    /**
+     * Состояние медиа удалённого пира.
+     *
+     * undefined — ещё не знаем (нет соединения или не пришло media_state).
+     * false     — пир явно выключил.
+     * true      — пир явно включил.
+     *
+     * Только для remote-тайлов.
+     */
     remoteAudioAvailable?: boolean;
     remoteVideoAvailable?: boolean;
-    connectionState?: string;
+
+    /**
+     * Разблокировал ли локальный пользователь воспроизведение
+     * удалённого звука. Только для remote-тайлов.
+     */
     audioEnabled?: boolean;
-    registerVideoElement?: (peerId: string, el: HTMLVideoElement | null) => void;
+
+    connectionState?: string;
+
+    registerVideoElement?: (
+        peerId: string,
+        el: HTMLVideoElement | null,
+    ) => void;
 };
 
 function VideoTile({
@@ -18,88 +49,153 @@ function VideoTile({
     name,
     isSelf = false,
     stream = null,
-    microphoneEnabled = false,
-    remoteAudioAvailable = true,
-    remoteVideoAvailable = true,
-    connectionState = 'connected',
+    cameraEnabled = true,
+    microphoneEnabled = true,
+    remoteAudioAvailable,
+    remoteVideoAvailable,
     audioEnabled = false,
+    connectionState = 'connecting',
     registerVideoElement,
 }: VideoTileProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [playBlocked, setPlayBlocked] = useState(false);
 
-    const hasVideo = !!stream
-        ?.getVideoTracks()
-        .some((track) => track.readyState === 'live' && track.enabled);
+    // Принудительный ре-рендер при изменении треков на месте
+    // (mute/unmute/ended/addtrack/removetrack без нового MediaStream).
+    const [, forceRender] = useState(0);
 
-    const hasAudio = !!stream
-        ?.getAudioTracks()
-        .some((track) => track.readyState === 'live');
+    useEffect(() => {
+        if (!stream) {
+            return;
+        }
+        const rerender = () => forceRender((n) => n + 1);
 
-    const shouldShowVideo = hasVideo && (isSelf || remoteVideoAvailable);
+        stream.addEventListener('addtrack', rerender);
+        stream.addEventListener('removetrack', rerender);
 
-    // Show a "mic off" indicator when the tile's audio is not available.
+        const tracks = stream.getTracks();
+        tracks.forEach((track) => {
+            track.addEventListener('mute', rerender);
+            track.addEventListener('unmute', rerender);
+            track.addEventListener('ended', rerender);
+        });
+
+        return () => {
+            stream.removeEventListener('addtrack', rerender);
+            stream.removeEventListener('removetrack', rerender);
+            tracks.forEach((track) => {
+                track.removeEventListener('mute', rerender);
+                track.removeEventListener('unmute', rerender);
+                track.removeEventListener('ended', rerender);
+            });
+        };
+    }, [stream]);
+
+    const hasLiveVideo =
+        !!stream &&
+        stream
+            .getVideoTracks()
+            .some((t) => t.readyState === 'live' && t.enabled);
+
+    // Видео показываем, если трек живой и мы не знаем точно,
+    // что камера выключена.
+    const shouldShowVideo = isSelf
+        ? hasLiveVideo && cameraEnabled
+        : hasLiveVideo && remoteVideoAvailable !== false;
+
+    // 🚫 только при явном false. undefined = «неизвестно», не показываем.
+    const shouldShowCameraOff = isSelf
+        ? !cameraEnabled
+        : remoteVideoAvailable === false;
+
+    // 🔇 только при явном false.
     const shouldShowMicrophoneOff = isSelf
         ? !microphoneEnabled
-        : !remoteAudioAvailable || !hasAudio;
+        : remoteAudioAvailable === false;
 
-    const shouldShowCameraOff = !shouldShowVideo;
-
+    // Метка состояния — только когда удалённого потока нет вообще.
+    const hasRemoteStream = !isSelf && Boolean(stream);
     const stateLabel =
-        connectionState === 'connected'
-            ? ''
-            : connectionState === 'failed'
-              ? ' · Нет соединения'
-              : connectionState === 'disconnected'
-                ? ' · Соединение прервано'
-                : ' · Подключение…';
+        !isSelf && !hasRemoteStream
+            ? connectionState === 'connected'
+                ? ''
+                : connectionState === 'failed'
+                  ? ' · Нет соединения'
+                  : connectionState === 'disconnected'
+                    ? ' · Соединение прервано'
+                    : ' · Подключение…'
+            : '';
 
-    // Register this element so the room can unmute/unlock it on demand.
+    // Регистрация video-элемента для remote-тайлов.
     useEffect(() => {
         const video = videoRef.current;
         if (!video || isSelf || !registerVideoElement) {
             return;
         }
-
         registerVideoElement(peerId, video);
-
         return () => {
             registerVideoElement(peerId, null);
         };
     }, [peerId, isSelf, registerVideoElement]);
 
+    // Прикрепление MediaStream и запуск воспроизведения.
     useEffect(() => {
         const video = videoRef.current;
-
         if (!video) {
             return;
         }
 
-        video.srcObject = stream;
+        if (video.srcObject !== stream) {
+            video.srcObject = stream;
+        }
 
-        return () => {
-            if (video.srcObject === stream) {
-                video.srcObject = null;
-            }
-        };
-    }, [stream]);
-
-    useEffect(() => {
-        const video = videoRef.current;
-
-        if (!video || !stream || isSelf) {
+        if (!stream) {
             return;
         }
 
-        video.muted = !audioEnabled;
+        video.autoplay = true;
+        video.playsInline = true;
 
-        // Attempt playback even for audio-only streams so we can detect
-        // autoplay blocking.
+        // Muted autoplay разрешён браузером.
+        if (!isSelf) {
+            video.muted = true;
+        }
+
         void video
             .play()
             .then(() => setPlayBlocked(false))
             .catch(() => setPlayBlocked(true));
-    }, [stream, isSelf, audioEnabled]);
+
+        return () => {
+            // Треки не останавливаем — MediaStream принадлежит WebRTC.
+            if (video.srcObject === stream) {
+                video.srcObject = null;
+            }
+        };
+    }, [stream, isSelf]);
+
+    // Разблокировка/блокировка удалённого звука.
+    // Не трогает srcObject и не влияет на видимость видео.
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video || !stream || isSelf) {
+            return;
+        }
+
+        if (!audioEnabled) {
+            video.muted = true;
+            if (video.paused) {
+                void video.play().catch(() => setPlayBlocked(true));
+            }
+            return;
+        }
+
+        video.muted = false;
+        void video
+            .play()
+            .then(() => setPlayBlocked(false))
+            .catch(() => setPlayBlocked(true));
+    }, [stream, audioEnabled, isSelf]);
 
     return (
         <div className="video-tile">
@@ -109,10 +205,10 @@ function VideoTile({
                 data-peer-id={peerId}
                 autoPlay
                 playsInline
-                muted={isSelf || !audioEnabled}
-                style={{
-                    display: shouldShowVideo ? 'block' : 'none',
-                }}
+                // Для self всегда muted. Для remote состояние muted
+                // управляется императивно эффектом выше.
+                muted={isSelf ? true : undefined}
+                style={{ display: shouldShowVideo ? 'block' : 'none' }}
             />
 
             {!shouldShowVideo && (
@@ -120,10 +216,7 @@ function VideoTile({
                     <div className="video-placeholder-avatar">
                         {name.charAt(0).toUpperCase() || '?'}
                     </div>
-
                     <div>{name}</div>
-
-                    {!isSelf && stateLabel}
                 </div>
             )}
 
@@ -135,9 +228,7 @@ function VideoTile({
             )}
 
             <div className="video-tile-name">
-                {name}
-                {isSelf && ' (Вы)'}
-
+                {name} {isSelf && ' (Вы)'}
                 {shouldShowMicrophoneOff && (
                     <span
                         className="microphone-off"
@@ -147,7 +238,6 @@ function VideoTile({
                         🔇
                     </span>
                 )}
-
                 {shouldShowCameraOff && (
                     <span
                         className="camera-off"
@@ -157,7 +247,6 @@ function VideoTile({
                         🚫
                     </span>
                 )}
-
                 {stateLabel}
             </div>
         </div>

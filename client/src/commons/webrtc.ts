@@ -1,10 +1,14 @@
 export const RTC_CONFIGURATION: RTCConfiguration = {
-    iceServers: [{ urls: "stun:stun2.1.google.com:19302" }],
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+    ],
 };
 
 export function isWebRTCSupported(): boolean {
-    return typeof window !== 'undefined' &&
-        'RTCPeerConnection' in window &&
-        !!navigator.mediaDevices &&
-        typeof navigator.mediaDevices.getUserMedia === 'function';
+    return (
+        typeof window !== 'undefined' &&
+        typeof window.RTCPeerConnection === 'function' &&
+        !!navigator.mediaDevices?.getUserMedia
+    );
 }

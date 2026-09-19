@@ -15,6 +15,18 @@ type VideoGridProps = {
     registerVideoElement?: (peerId: string, el: HTMLVideoElement | null) => void;
 };
 
+type RemoteMediaState = {
+    audio: boolean | undefined;
+    video: boolean | undefined;
+};
+
+// undefined = «неизвестно». Не false, иначе тайл покажет 🚫
+// до первого media_state.
+const DEFAULT_REMOTE_MEDIA: RemoteMediaState = {
+    audio: undefined,
+    video: undefined,
+};
+
 function VideoGrid({
     participants,
     selfId,
@@ -26,17 +38,16 @@ function VideoGrid({
     audioUnlocked = false,
     registerVideoElement,
 }: VideoGridProps) {
-    const self = participants.find((participant) => participant.id === selfId);
-    const others = participants.filter(
-        (participant) => participant.id !== selfId,
-    );
+    const self = selfId
+        ? participants.find((participant) => participant.id === selfId)
+        : undefined;
 
-    const [remoteVideoAvailable, setRemoteVideoAvailable] = useState<
-        Record<string, boolean>
-    >({});
+    const others = selfId
+        ? participants.filter((participant) => participant.id !== selfId)
+        : [];
 
-    const [remoteAudioAvailable, setRemoteAudioAvailable] = useState<
-        Record<string, boolean>
+    const [remoteMedia, setRemoteMedia] = useState<
+        Record<string, RemoteMediaState>
     >({});
 
     useEffect(() => {
@@ -49,46 +60,36 @@ function VideoGrid({
             videoEnabled?: boolean;
             audioEnabled?: boolean;
         }) => {
-            if (videoEnabled !== undefined) {
-                setRemoteVideoAvailable((current) => ({
-                    ...current,
-                    [from]: videoEnabled,
-                }));
-            }
-
-            if (audioEnabled !== undefined) {
-                setRemoteAudioAvailable((current) => ({
-                    ...current,
-                    [from]: audioEnabled,
-                }));
-            }
+            setRemoteMedia((current) => {
+                const prev = current[from] ?? DEFAULT_REMOTE_MEDIA;
+                const next: RemoteMediaState = {
+                    audio: audioEnabled ?? prev.audio,
+                    video: videoEnabled ?? prev.video,
+                };
+                if (prev.audio === next.audio && prev.video === next.video) {
+                    return current;
+                }
+                return { ...current, [from]: next };
+            });
         };
 
         socket.on('webrtc:media_state', handleMediaState);
+
+        // Запрос текущего состояния у сервера — на случай, если
+        // кто-то отправил media_state до монтирования компонента.
+        socket.emit('webrtc:request_media_state');
+
         return () => {
             socket.off('webrtc:media_state', handleMediaState);
         };
     }, []);
 
-    // Drop availability entries for participants who left.
+    // Удаляем записи ушедших участников.
     useEffect(() => {
         const activeIds = new Set(participants.map((p) => p.id));
 
-        setRemoteVideoAvailable((current) => {
-            const next: Record<string, boolean> = {};
-            let changed = false;
-            for (const [id, value] of Object.entries(current)) {
-                if (activeIds.has(id)) {
-                    next[id] = value;
-                } else {
-                    changed = true;
-                }
-            }
-            return changed ? next : current;
-        });
-
-        setRemoteAudioAvailable((current) => {
-            const next: Record<string, boolean> = {};
+        setRemoteMedia((current) => {
+            const next: Record<string, RemoteMediaState> = {};
             let changed = false;
             for (const [id, value] of Object.entries(current)) {
                 if (activeIds.has(id)) {
@@ -105,8 +106,8 @@ function VideoGrid({
         <div className="video-area">
             <div className={`video-grid video-grid-${others.length}`}>
                 {others.map((participant) => {
-                    const audioAvailable =
-                        remoteAudioAvailable[participant.id] ?? true;
+                    const media =
+                        remoteMedia[participant.id] ?? DEFAULT_REMOTE_MEDIA;
 
                     return (
                         <VideoTile
@@ -118,13 +119,8 @@ function VideoGrid({
                                 peerStates[participant.id] ?? 'connecting'
                             }
                             audioEnabled={audioUnlocked}
-                            remoteAudioAvailable={audioAvailable}
-                            remoteVideoAvailable={
-                                remoteVideoAvailable[participant.id] ?? true
-                            }
-                            // For remote tiles, use the remote's reported
-                            // audio state, not our local mic flag.
-                            microphoneEnabled={audioAvailable}
+                            remoteAudioAvailable={media.audio}
+                            remoteVideoAvailable={media.video}
                             registerVideoElement={registerVideoElement}
                         />
                     );
@@ -138,8 +134,8 @@ function VideoGrid({
                         name={self.name}
                         isSelf
                         stream={localStream}
+                        cameraEnabled={cameraEnabled}
                         microphoneEnabled={microphoneEnabled}
-                        remoteVideoAvailable={cameraEnabled}
                     />
                 </div>
             )}
