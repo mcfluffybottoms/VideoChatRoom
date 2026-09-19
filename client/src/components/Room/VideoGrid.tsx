@@ -11,6 +11,8 @@ type VideoGridProps = {
     peerStates?: Record<string, string>;
     microphoneEnabled?: boolean;
     audioUnlocked?: boolean;
+    cameraEnabled?: boolean;
+    registerVideoElement?: (peerId: string, el: HTMLVideoElement | null) => void;
 };
 
 function VideoGrid({
@@ -20,14 +22,15 @@ function VideoGrid({
     remoteStreams = {},
     peerStates = {},
     microphoneEnabled = true,
+    cameraEnabled = true,
     audioUnlocked = false,
+    registerVideoElement,
 }: VideoGridProps) {
     const self = participants.find((participant) => participant.id === selfId);
     const others = participants.filter(
         (participant) => participant.id !== selfId,
     );
 
-    // get if video is enabled
     const [remoteVideoAvailable, setRemoteVideoAvailable] = useState<
         Record<string, boolean>
     >({});
@@ -35,7 +38,7 @@ function VideoGrid({
     const [remoteAudioAvailable, setRemoteAudioAvailable] = useState<
         Record<string, boolean>
     >({});
-    // watch for media state changes from other participants
+
     useEffect(() => {
         const handleMediaState = ({
             from,
@@ -60,47 +63,88 @@ function VideoGrid({
                 }));
             }
         };
+
         socket.on('webrtc:media_state', handleMediaState);
         return () => {
             socket.off('webrtc:media_state', handleMediaState);
         };
     }, []);
 
+    // Drop availability entries for participants who left.
+    useEffect(() => {
+        const activeIds = new Set(participants.map((p) => p.id));
+
+        setRemoteVideoAvailable((current) => {
+            const next: Record<string, boolean> = {};
+            let changed = false;
+            for (const [id, value] of Object.entries(current)) {
+                if (activeIds.has(id)) {
+                    next[id] = value;
+                } else {
+                    changed = true;
+                }
+            }
+            return changed ? next : current;
+        });
+
+        setRemoteAudioAvailable((current) => {
+            const next: Record<string, boolean> = {};
+            let changed = false;
+            for (const [id, value] of Object.entries(current)) {
+                if (activeIds.has(id)) {
+                    next[id] = value;
+                } else {
+                    changed = true;
+                }
+            }
+            return changed ? next : current;
+        });
+    }, [participants]);
+
     return (
         <div className="video-area">
             <div className={`video-grid video-grid-${others.length}`}>
-                {others.map((participant) => (
-                    <VideoTile
-                        key={participant.id}
-                        name={participant.name}
-                        stream={remoteStreams[participant.id] ?? null}
-                        connectionState={
-                            peerStates[participant.id] ?? 'connecting'
-                        }
-                        audioEnabled={audioUnlocked}
-                        remoteAudioAvailable={
-                            remoteAudioAvailable[participant.id] ?? true
-                        }
-                        remoteVideoAvailable={
-                            remoteVideoAvailable[participant.id] ?? true
-                        }
-                        microphoneEnabled={
-                            remoteVideoAvailable[participant.id] ?? true
-                        }
-                    />
-                ))}
+                {others.map((participant) => {
+                    const audioAvailable =
+                        remoteAudioAvailable[participant.id] ?? true;
+
+                    return (
+                        <VideoTile
+                            key={participant.id}
+                            peerId={participant.id}
+                            name={participant.name}
+                            stream={remoteStreams[participant.id] ?? null}
+                            connectionState={
+                                peerStates[participant.id] ?? 'connecting'
+                            }
+                            audioEnabled={audioUnlocked}
+                            remoteAudioAvailable={audioAvailable}
+                            remoteVideoAvailable={
+                                remoteVideoAvailable[participant.id] ?? true
+                            }
+                            // For remote tiles, use the remote's reported
+                            // audio state, not our local mic flag.
+                            microphoneEnabled={audioAvailable}
+                            registerVideoElement={registerVideoElement}
+                        />
+                    );
+                })}
             </div>
+
             {self && (
                 <div className="self-view">
                     <VideoTile
+                        peerId={self.id}
                         name={self.name}
                         isSelf
                         stream={localStream}
                         microphoneEnabled={microphoneEnabled}
+                        remoteVideoAvailable={cameraEnabled}
                     />
                 </div>
             )}
         </div>
     );
 }
+
 export default VideoGrid;

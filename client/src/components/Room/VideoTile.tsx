@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 type VideoTileProps = {
+    peerId: string;
     name: string;
     isSelf?: boolean;
     stream?: MediaStream | null;
@@ -9,9 +10,11 @@ type VideoTileProps = {
     remoteVideoAvailable?: boolean;
     connectionState?: string;
     audioEnabled?: boolean;
+    registerVideoElement?: (peerId: string, el: HTMLVideoElement | null) => void;
 };
 
 function VideoTile({
+    peerId,
     name,
     isSelf = false,
     stream = null,
@@ -20,6 +23,7 @@ function VideoTile({
     remoteVideoAvailable = true,
     connectionState = 'connected',
     audioEnabled = false,
+    registerVideoElement,
 }: VideoTileProps) {
     const videoRef = useRef<HTMLVideoElement>(null);
     const [playBlocked, setPlayBlocked] = useState(false);
@@ -28,31 +32,18 @@ function VideoTile({
         ?.getVideoTracks()
         .some((track) => track.readyState === 'live' && track.enabled);
 
-    // For yourself, use the actual local track.
-    // For remote users, also require the state received through Socket.IO.
+    const hasAudio = !!stream
+        ?.getAudioTracks()
+        .some((track) => track.readyState === 'live');
+
     const shouldShowVideo = hasVideo && (isSelf || remoteVideoAvailable);
 
-    useEffect(() => {
-        const video = videoRef.current;
+    // Show a "mic off" indicator when the tile's audio is not available.
+    const shouldShowMicrophoneOff = isSelf
+        ? !microphoneEnabled
+        : !remoteAudioAvailable || !hasAudio;
 
-        if (!video) return;
-
-        video.srcObject = stream;
-        video.muted = isSelf || !audioEnabled;
-
-        if (stream && shouldShowVideo) {
-            void video
-                .play()
-                .then(() => setPlayBlocked(false))
-                .catch(() => setPlayBlocked(true));
-        }
-
-        return () => {
-            if (video.srcObject === stream) {
-                video.srcObject = null;
-            }
-        };
-    }, [stream, isSelf, audioEnabled, shouldShowVideo]);
+    const shouldShowCameraOff = !shouldShowVideo;
 
     const stateLabel =
         connectionState === 'connected'
@@ -63,44 +54,110 @@ function VideoTile({
                 ? ' · Соединение прервано'
                 : ' · Подключение…';
 
+    // Register this element so the room can unmute/unlock it on demand.
+    useEffect(() => {
+        const video = videoRef.current;
+        if (!video || isSelf || !registerVideoElement) {
+            return;
+        }
+
+        registerVideoElement(peerId, video);
+
+        return () => {
+            registerVideoElement(peerId, null);
+        };
+    }, [peerId, isSelf, registerVideoElement]);
+
+    useEffect(() => {
+        const video = videoRef.current;
+
+        if (!video) {
+            return;
+        }
+
+        video.srcObject = stream;
+
+        return () => {
+            if (video.srcObject === stream) {
+                video.srcObject = null;
+            }
+        };
+    }, [stream]);
+
+    useEffect(() => {
+        const video = videoRef.current;
+
+        if (!video || !stream || isSelf) {
+            return;
+        }
+
+        video.muted = !audioEnabled;
+
+        // Attempt playback even for audio-only streams so we can detect
+        // autoplay blocking.
+        void video
+            .play()
+            .then(() => setPlayBlocked(false))
+            .catch(() => setPlayBlocked(true));
+    }, [stream, isSelf, audioEnabled]);
+
     return (
         <div className="video-tile">
-            {shouldShowVideo && (
-                <video
-                    ref={videoRef}
-                    data-self={isSelf ? 'true' : 'false'}
-                    autoPlay
-                    playsInline
-                    muted={isSelf || !audioEnabled}
-                />
-            )}
+            <video
+                ref={videoRef}
+                data-self={isSelf ? 'true' : 'false'}
+                data-peer-id={peerId}
+                autoPlay
+                playsInline
+                muted={isSelf || !audioEnabled}
+                style={{
+                    display: shouldShowVideo ? 'block' : 'none',
+                }}
+            />
 
             {!shouldShowVideo && (
                 <div className="video-placeholder">
-                    {name}
+                    <div className="video-placeholder-avatar">
+                        {name.charAt(0).toUpperCase() || '?'}
+                    </div>
+
+                    <div>{name}</div>
+
                     {!isSelf && stateLabel}
                 </div>
             )}
 
-            {playBlocked && !isSelf && shouldShowVideo && (
+            {playBlocked && !isSelf && (
                 <div className="video-play-hint">
-                    Нажмите «Разрешить звук участников» для воспроизведения.
+                    Нажмите «Разрешить звук участников», чтобы слышать
+                    собеседников.
                 </div>
             )}
 
             <div className="video-tile-name">
                 {name}
-                {isSelf && ' (Вы)'}{' '}
-                {microphoneEnabled && (
-                    <span className="microphone-off" title="Микрофон включен">
-                        🎙️
+                {isSelf && ' (Вы)'}
+
+                {shouldShowMicrophoneOff && (
+                    <span
+                        className="microphone-off"
+                        title="Микрофон выключен"
+                        aria-label="Микрофон выключен"
+                    >
+                        🔇
                     </span>
                 )}
-                {shouldShowVideo && (
-                    <span className="camera-off" title="Камера включена">
-                        📷
+
+                {shouldShowCameraOff && (
+                    <span
+                        className="camera-off"
+                        title="Камера выключена"
+                        aria-label="Камера выключена"
+                    >
+                        🚫
                     </span>
                 )}
+
                 {stateLabel}
             </div>
         </div>
