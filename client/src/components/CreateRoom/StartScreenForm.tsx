@@ -41,9 +41,13 @@ export default function StartScreenForm() {
         }
 
         const { roomId } = await response.json();
-        sessionStorage.setItem(`roomName:${roomId}`, result[1]);
+        //sessionStorage.setItem(`roomName:${roomId}`, result[1]);
 
-        navigate(`/room/${roomId}`);
+        navigate(`/room/${roomId}`, {
+            state: {
+                name: result[1],
+            },
+        });
     };
 
     return (

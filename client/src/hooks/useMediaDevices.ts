@@ -1,14 +1,29 @@
 import { useEffect, useState } from 'react';
 
-export function useMediaDevices() {
+type UseMediaDevicesResult = {
+    stream: MediaStream | null;
+    isMicrophoneEnabled: boolean;
+    isCameraEnabled: boolean;
+    toggleMicrophone: () => boolean | null;
+    enableCamera: () => Promise<boolean>;
+    disableCamera: () => boolean;
+    error: string;
+};
+
+export function useMediaDevices(): UseMediaDevicesResult {
     const [stream, setStream] = useState<MediaStream | null>(null);
+    const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(false);
+    const [isCameraEnabled, setIsCameraEnabled] = useState(false);
     const [error, setError] = useState('');
 
     useEffect(() => {
         let currentStream: MediaStream | null = null;
 
         async function requestMedia() {
-            if (!navigator.mediaDevices?.getUserMedia) {
+            if (
+                !navigator.mediaDevices ||
+                !navigator.mediaDevices.getUserMedia
+            ) {
                 return;
             }
 
@@ -19,6 +34,26 @@ export function useMediaDevices() {
                 });
 
                 setStream(currentStream);
+
+                setIsMicrophoneEnabled(
+                    currentStream
+                        .getAudioTracks()
+                        .some(
+                            (track) =>
+                                track.readyState === 'live' && track.enabled,
+                        ),
+                );
+
+                setIsCameraEnabled(
+                    currentStream
+                        .getVideoTracks()
+                        .some(
+                            (track) =>
+                                track.readyState === 'live' && track.enabled,
+                        ),
+                );
+
+                setError('');
             } catch {
                 setError(
                     'Не удалось получить доступ к камере или микрофону. Вы можете продолжить без них.',
@@ -29,12 +64,154 @@ export function useMediaDevices() {
         requestMedia();
 
         return () => {
-            currentStream?.getTracks().forEach(track => track.stop());
+            currentStream?.getTracks().forEach((track) => {
+                track.stop();
+            });
         };
     }, []);
 
+    useEffect(() => {
+        if (!stream) {
+            return;
+        }
+
+        function handleTrackEnded(event: Event) {
+            const track = event.target as MediaStreamTrack;
+
+            if (track.kind === 'video') {
+                setIsCameraEnabled(false);
+
+                setError(
+                    'Камера стала недоступна. Подключите камеру и проверьте разрешение в настройках браузера или операционной системы.',
+                );
+            }
+
+            if (track.kind === 'audio') {
+                setIsMicrophoneEnabled(false);
+
+                setError(
+                    'Микрофон стал недоступен. Подключите микрофон и проверьте разрешение в настройках браузера или операционной системы.',
+                );
+            }
+        }
+
+        const tracks = stream.getTracks();
+
+        tracks.forEach((track) => {
+            track.addEventListener('ended', handleTrackEnded);
+        });
+
+        return () => {
+            tracks.forEach((track) => {
+                track.removeEventListener('ended', handleTrackEnded);
+            });
+        };
+    }, [stream]);
+
+    useEffect(() => {
+        if (!navigator.mediaDevices) {
+            return;
+        }
+
+        function handleDeviceChange() {
+            setError(
+                'Устройство камеры или микрофона изменилось. Проверьте подключение устройства и разрешения браузера.',
+            );
+        }
+
+        navigator.mediaDevices.addEventListener(
+            'devicechange',
+            handleDeviceChange,
+        );
+
+        return () => {
+            navigator.mediaDevices.removeEventListener(
+                'devicechange',
+                handleDeviceChange,
+            );
+        };
+    }, []);
+
+    function toggleMicrophone(): boolean | null {
+        if (!stream) {
+            return null;
+        }
+
+        const enabled = !isMicrophoneEnabled;
+
+        stream.getAudioTracks().forEach((track) => {
+            track.enabled = enabled;
+        });
+
+        setIsMicrophoneEnabled(enabled);
+
+        return enabled;
+    }
+
+    async function enableCamera(): Promise<boolean> {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            return false;
+        }
+
+        try {
+            const newStream = await navigator.mediaDevices.getUserMedia({
+                video: true,
+            });
+
+            const newVideoTrack = newStream.getVideoTracks()[0];
+
+            if (!newVideoTrack) {
+                newStream.getTracks().forEach((track) => {
+                    track.stop();
+                });
+
+                return false;
+            }
+
+            setStream((currentStream) => {
+                if (!currentStream) {
+                    return newStream;
+                }
+
+                currentStream.addTrack(newVideoTrack);
+
+                return currentStream;
+            });
+
+            setIsCameraEnabled(true);
+            setError('');
+
+            return true;
+        } catch {
+            setError(
+                'Не удалось включить камеру. Проверьте разрешение камеры в настройках браузера или операционной системы.',
+            );
+
+            return false;
+        }
+    }
+
+    function disableCamera(): boolean {
+        if (!stream) {
+            return false;
+        }
+
+        stream.getVideoTracks().forEach((track) => {
+            track.stop();
+        });
+
+        setIsCameraEnabled(false);
+
+        return true;
+    }
+
     return {
         stream,
+        isMicrophoneEnabled,
+        isCameraEnabled,
+        toggleMicrophone,
+        enableCamera,
+        disableCamera,
         error,
     };
 }

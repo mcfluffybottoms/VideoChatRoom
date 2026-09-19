@@ -61,7 +61,7 @@ function EnterRoomForm({ onEnter }: EnterRoomFormProps) {
             case NameValidationResult.Valid:
         }
 
-        sessionStorage.setItem(`roomName:${roomId}`, result[1]);
+        //sessionStorage.setItem(`roomName:${roomId}`, result[1]);
         onEnter(result[1]);
 
         navigate(`/room/${roomId}`);

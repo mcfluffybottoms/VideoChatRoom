@@ -11,42 +11,57 @@ import { useMediaDevices } from '../../hooks/useMediaDevices';
 
 const MAX_MESSAGE_LENGTH = 500;
 
-function Room() {
+type RoomProps = {
+    name: string;
+};
+
+function Room({ name }: RoomProps) {
     const { roomId } = useParams();
     const navigate = useNavigate();
-
-    const [participants, setParticipants] = useState<Participant[]>([]);
-    const [messages, setMessages] = useState<RoomHistoryEntry[]>([]);
-    const [text, setText] = useState('');
-    const [selfId, setSelfId] = useState('');
 
     // banner for errors
     type BannerStatus = {
         type: 'success' | 'error';
         message: string;
-    } | null;
+    };
+    const [banner, setBanner] = useState<BannerStatus | null>(null);
+    const [bannerKey, setBannerKey] = useState(0);
+    let persistentBanner: BannerStatus | null = null;
 
-    const [banner, setBanner] = useState<BannerStatus>(null);
-    let oneTimeBanner = null;
+    function showBanner(
+        type: 'success' | 'error',
+        message: string,
+    ) {
+        setBanner({
+            type,
+            message,
+        });
+
+        setBannerKey(current => current + 1);
+    }
 
     // copy url
     async function handleCopyRoomUrl() {
         try {
             await navigator.clipboard.writeText(window.location.href);
 
-            setBanner({
-                type: 'success',
-                message: 'Ссылка скопирована в буфер обмена!',
-            });
+            showBanner(
+                'success',
+                'Ссылка скопирована в буфер обмена!'
+            );
         } catch {
-            setBanner({
-                type: 'error',
-                message: 'Не удалось скопировать ссылку!',
-            });
+            showBanner(
+                'error',
+                'Не удалось скопировать ссылку!'
+            );
         }
     }
 
-    // add socket
+    // user relationships
+    const [participants, setParticipants] = useState<Participant[]>([]);
+    const [messages, setMessages] = useState<RoomHistoryEntry[]>([]);
+    const [text, setText] = useState('');
+    const [selfId, setSelfId] = useState('');
     type RoomError = 'full' | 'server' | null;
     const [roomError, setRoomError] = useState<RoomError>(null);
     useEffect(() => {
@@ -100,24 +115,24 @@ function Room() {
         };
 
         const handleAlreadyJoined = () => {
-            setBanner({
-                type: 'error',
-                message: 'Вы уже в комнате.',
-            });
+            showBanner(
+                'error',
+                'Вы уже в комнате.'
+            );
         };
 
         const handleRateLimited = () => {
-            setBanner({
-                type: 'error',
-                message: 'Подождите, прежде чем слать новое сообщение.',
-            });
+            showBanner(
+                'error',
+                'Подождите, прежде чем слать новое сообщение.'
+            );
         };
 
         const handleRoomNotFound = () => {
-            setBanner({
-                type: 'error',
-                message: 'Такой комнаты нет.',
-            });
+            showBanner(
+                'error',
+                'Такой комнаты нет.'
+            );
         };
 
         const handleConnectError = (error: Error) => {
@@ -128,7 +143,7 @@ function Room() {
         const joinRoom = () => {
             socket.emit('room:join', {
                 roomId,
-                name: sessionStorage.getItem(`roomName:${roomId}`) ?? '',
+                name: name ?? '',
             });
         };
 
@@ -161,10 +176,10 @@ function Room() {
             return;
         }
         if (normalizedText.length > MAX_MESSAGE_LENGTH) {
-            setBanner({
-                type: 'error',
-                message: `Сообщение слишком длинное. Максимум возможно ${MAX_MESSAGE_LENGTH} символов.`,
-            });
+            showBanner(
+                'error',
+                `Сообщение слишком длинное. Максимум возможно ${MAX_MESSAGE_LENGTH} символов.`
+            );
             return;
         }
 
@@ -175,23 +190,52 @@ function Room() {
         setText('');
     }
 
-    // check webrtc compability
-    const isSupported = isWebRTCSupported();
-    const { stream, error: mediaError } = useMediaDevices();
+    function handleLeaveRoom() {
+        socket.emit('room:leave');
 
-    if(!isSupported) {
-        oneTimeBanner = {
-            type: 'error',
-            message: "WebRTC недоступен в этом браузере.",
-        }
-    } else {
-        if (mediaError) {
-            oneTimeBanner = {
-                type: 'error',
-                message: mediaError,
-            }
-        }
+        socket.disconnect();
+        //sessionStorage.removeItem(`roomName:${roomId}`)
+        navigate('/');
     }
+
+    // media
+    const {
+        stream,
+        isMicrophoneEnabled,
+        isCameraEnabled,
+        toggleMicrophone,
+        enableCamera,
+        disableCamera,
+        error: mediaError,
+    } = useMediaDevices();
+    const isSupported = isWebRTCSupported();
+
+    if (!isSupported) {
+        persistentBanner = {
+            type: 'error',
+            message: 'WebRTC недоступен в этом браузере.',
+        };
+    } else if (mediaError) {
+        persistentBanner = {
+            type: 'error',
+            message: mediaError,
+        };
+    }
+    
+
+    // error handling
+    useEffect(() => {
+        if (!banner) {
+            return;
+        }
+        const timer = setTimeout(() => {
+            setBanner(null);
+        }, 2000);
+
+        return () => {
+            clearTimeout(timer);
+        };
+    }, [banner]);
 
     if (roomError === 'full') {
         return (
@@ -220,8 +264,7 @@ function Room() {
         );
     }
 
-    const currentBanner = banner || oneTimeBanner;
-
+    // final page
     return (
         <div>
             <div className="room-header">
@@ -231,12 +274,23 @@ function Room() {
                     Скопировать ссылку
                 </button>
 
-                {currentBanner && (
+                {banner && (
                     <div
-                        className={`banner banner-${currentBanner.type}`}
-                        role={currentBanner.type === 'error' ? 'alert' : 'status'}
+                        key={bannerKey}
+                        className={`banner banner-${banner.type}`}
+                        role={banner.type === 'error' ? 'alert' : 'status'}
                     >
-                        {currentBanner.message}
+                        {banner.message}
+                    </div>
+                )}
+
+                {persistentBanner && (
+                    <div
+                        key={`${persistentBanner.type}-${persistentBanner.message}`}
+                        className={`persistent-banner persistent-banner-${persistentBanner.type}`}
+                        role="alert"
+                    >
+                        {persistentBanner.message}
                     </div>
                 )}
 
@@ -266,6 +320,26 @@ function Room() {
                         <button type="submit">Send</button>
                     </form>
                 </section>
+            </div>
+
+            <div className="room-footer">
+                <button type="button" onClick={toggleMicrophone}>
+                    {isMicrophoneEnabled
+                        ? 'Выключить микрофон'
+                        : 'Включить микрофон'}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={isCameraEnabled ? disableCamera : enableCamera}>
+                    {isCameraEnabled ? 'Выключить камеру' : 'Включить камеру'}
+                </button>
+
+                <button
+                    type="button"
+                    onClick={handleLeaveRoom}>
+                    {'Выйти'}
+                </button>
             </div>
         </div>
     );

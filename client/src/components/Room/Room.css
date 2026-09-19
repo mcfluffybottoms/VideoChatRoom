@@ -208,3 +208,40 @@
         transform: translate(-50%, -10px);
     }
 }
+
+.persistent-banner {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    z-index: 1000;
+    padding: 12px 20px;
+    border-radius: 8px;
+    background: #a83232;
+    color: white;
+
+    transform: translateX(-50%);
+    animation: banner-show 3s ease-in-out forwards;
+}
+
+
+@keyframes banner-show {
+    0% {
+        opacity: 0;
+        transform: translate(-50%, 10px);
+    }
+
+    10% {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+
+    80% {
+        opacity: 1;
+        transform: translate(-50%, 0);
+    }
+
+    100% {
+        opacity: 0;
+        transform: translate(-50%, -10px);
+    }
+}
