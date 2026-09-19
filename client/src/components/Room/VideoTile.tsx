@@ -91,27 +91,24 @@ function VideoTile({
         };
     }, [stream]);
 
+    const videoTracks = stream?.getVideoTracks() ?? [];
+    const audioTracks = stream?.getAudioTracks() ?? [];
+
     const hasLiveVideo =
         !!stream &&
-        stream
-            .getVideoTracks()
-            .some((t) => t.readyState === 'live' && t.enabled);
+        videoTracks.some((t) => t.readyState === 'live' && t.enabled && !t.muted);
 
-    // Видео показываем, если трек живой и мы не знаем точно,
-    // что камера выключена.
+    const hasLiveAudio =
+        !!stream &&
+        audioTracks.some((t) => t.readyState === 'live' && t.enabled);
+
     const shouldShowVideo = isSelf
         ? hasLiveVideo && cameraEnabled
         : hasLiveVideo && remoteVideoAvailable !== false;
 
-    // 🚫 только при явном false. undefined = «неизвестно», не показываем.
-    const shouldShowCameraOff = isSelf
-        ? !cameraEnabled
-        : remoteVideoAvailable === false;
-
-    // 🔇 только при явном false.
-    const shouldShowMicrophoneOff = isSelf
-        ? !microphoneEnabled
-        : remoteAudioAvailable === false;
+    const shouldShowAudio = isSelf
+        ? hasLiveAudio && microphoneEnabled
+        : hasLiveAudio && remoteAudioAvailable !== false;
 
     // Метка состояния — только когда удалённого потока нет вообще.
     const hasRemoteStream = !isSelf && Boolean(stream);
@@ -205,8 +202,6 @@ function VideoTile({
                 data-peer-id={peerId}
                 autoPlay
                 playsInline
-                // Для self всегда muted. Для remote состояние muted
-                // управляется императивно эффектом выше.
                 muted={isSelf ? true : undefined}
                 style={{ display: shouldShowVideo ? 'block' : 'none' }}
             />
@@ -229,7 +224,7 @@ function VideoTile({
 
             <div className="video-tile-name">
                 {name} {isSelf && ' (Вы)'}
-                {shouldShowMicrophoneOff && (
+                {!shouldShowAudio && (
                     <span
                         className="microphone-off"
                         title="Микрофон выключен"
@@ -238,7 +233,7 @@ function VideoTile({
                         🔇
                     </span>
                 )}
-                {shouldShowCameraOff && (
+                {!shouldShowVideo && (
                     <span
                         className="camera-off"
                         title="Камера выключена"

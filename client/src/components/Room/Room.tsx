@@ -241,8 +241,7 @@ function Room({ name }: RoomProps) {
         remoteStreams,
         peerStates,
         audioUnlocked,
-        audioNeedsGesture,
-        enableRemoteAudio,
+        audioNeedsGesture
     } = useRoomWebRTC({
         participants,
         selfId,
@@ -363,7 +362,7 @@ function Room({ name }: RoomProps) {
                 {/* ================================================== */}
 
                 <section className="room-video">
-                    <VideoGrid
+                    {selfId && <VideoGrid
                         participants={participants}
                         selfId={selfId}
                         localStream={stream}
@@ -372,7 +371,7 @@ function Room({ name }: RoomProps) {
                         microphoneEnabled={isMicrophoneEnabled}
                         audioUnlocked={audioUnlocked}
                         cameraEnabled={isCameraEnabled}
-                    />
+                    />}
 
                     {audioNeedsGesture && (
                         <p role="status">
