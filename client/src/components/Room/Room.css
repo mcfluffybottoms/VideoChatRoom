@@ -183,9 +183,9 @@
     background: #ededed;
 }
 
-/* COPY BANNER */
+/* COPY notification */
 
-.banner {
+.notification {
     position: fixed;
     bottom: 16px;
     left: 50%;
@@ -202,18 +202,18 @@
     transform: translate(-50%, 0);
     opacity: 1;
 
-    animation: banner-disappear 2s ease forwards;
+    animation: notification-disappear 2s ease forwards;
 }
 
-.banner-success {
+.notification-success {
     background: #1e1e1e;
 }
 
-.banner-error {
+.notification-error {
     background: #a83232;
 }
 
-@keyframes banner-disappear {
+@keyframes notification-disappear {
     0% {
         opacity: 1;
         transform: translate(-50%, 0);
@@ -230,7 +230,7 @@
     }
 }
 
-.persistent-banner {
+.persistent-notification {
     position: fixed;
     bottom: 16px;
     left: 50%;
@@ -241,11 +241,10 @@
     color: white;
 
     transform: translateX(-50%);
-    animation: banner-show 3s ease-in-out forwards;
+    animation: notification-show 3s ease-in-out forwards;
 }
 
-
-@keyframes banner-show {
+@keyframes notification-show {
     0% {
         opacity: 0;
         transform: translate(-50%, 10px);
@@ -276,7 +275,9 @@
     padding: 10px 16px;
     border-radius: 6px;
     cursor: pointer;
-    transition: opacity 0.2s, background 0.2s;
+    transition:
+        opacity 0.2s,
+        background 0.2s;
 }
 
 .media-button:hover {

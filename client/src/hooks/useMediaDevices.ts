@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { socket } from '../config/socket';
+import { NotificationStatus } from '../commons/dto';
 
 type UseMediaDevicesResult = {
     stream: MediaStream | null;
@@ -16,7 +17,8 @@ type UseMediaDevicesResult = {
     enableCamera: () => Promise<boolean>;
     disableCamera: () => boolean;
 
-    error: string;
+    error: NotificationStatus | null;
+    errorKey: number;
 };
 
 export function useMediaDevices(): UseMediaDevicesResult {
@@ -28,10 +30,17 @@ export function useMediaDevices(): UseMediaDevicesResult {
     const [isMicrophoneAvailable, setIsMicrophoneAvailable] = useState(false);
     const [isCameraAvailable, setIsCameraAvailable] = useState(false);
 
-    const [error, setError] = useState('');
+    const [error, setError] = useState<NotificationStatus | null>(null);
+    const [errorKey, showErrorKey] = useState(0);
+    function showError(v: NotificationStatus | null) {
+        setError(v);
+        showErrorKey((current) => current + 1);
+    }
 
     const cameraWasUnavailable = useRef(false);
     const microphoneWasUnavailable = useRef(false);
+
+    
 
     /*
      * Initial media setup.
@@ -65,6 +74,10 @@ export function useMediaDevices(): UseMediaDevicesResult {
                 });
             } catch {
                 cameraWasUnavailable.current = true;
+                showError({
+                    type: 'error',
+                    message: 'Не удалось включить камеру.',
+                });
             }
 
             // Microphone
@@ -74,6 +87,10 @@ export function useMediaDevices(): UseMediaDevicesResult {
                 });
             } catch {
                 microphoneWasUnavailable.current = true;
+                showError({
+                    type: 'error',
+                    message: 'Не удалось включить микрофон.',
+                });
             }
 
             const tracks = [
@@ -91,7 +108,10 @@ export function useMediaDevices(): UseMediaDevicesResult {
                     audioEnabled: false,
                 });
 
-                setError('Не удалось получить доступ к камере или микрофону.');
+                showError({
+                    type: 'error',
+                    message: 'Не удалось получить доступ к камере или микрофону.',
+                });
 
                 return;
             }
@@ -128,7 +148,7 @@ export function useMediaDevices(): UseMediaDevicesResult {
                 audioEnabled,
             });
 
-            setError('');
+            showError(null);
         }
 
         void requestMedia();
@@ -145,10 +165,6 @@ export function useMediaDevices(): UseMediaDevicesResult {
      *
      * Detect physical camera removal.
      *
-     * When the track ends, remove it from our MediaStream immediately.
-     * Do NOT request a replacement here: recovery must happen only after
-     * the user explicitly selects/restores a device in browser/OS settings
-     * and then enables the camera again.
      */
     useEffect(() => {
         if (!stream) {
@@ -183,15 +199,7 @@ export function useMediaDevices(): UseMediaDevicesResult {
         return () => {
             videoTrack.removeEventListener('ended', handleEnded);
         };
-    }, [stream, socket]);
-
-    /*
-     * Camera recovery is intentionally manual.
-     *
-     * A browser/OS device change does not automatically call getUserMedia().
-     * The user must restore/select the camera in system/browser settings and
-     * explicitly enable it again.
-     */
+    }, [stream]);
 
     /*
      * MICROPHONE
@@ -292,9 +300,12 @@ export function useMediaDevices(): UseMediaDevicesResult {
                     audioEnabled: true,
                 });
 
-                setError('');
+                showError(null);
             } catch {
-                // Microphone is still unavailable.
+                showError({
+                    type: 'error',
+                    message: 'Не удалось включить микрофон.',
+                });
             }
         }
 
@@ -434,7 +445,20 @@ export function useMediaDevices(): UseMediaDevicesResult {
 
             return true;
         } catch (error) {
-            console.error('[enableCamera] failed:', error);
+            switch (error) {
+                case 'NotAllowedError':
+                    showError({
+                        type: 'error',
+                        message: 'Доступ к камере запрещён.',
+                    });
+                    break;
+                default:
+                    showError({
+                        type: 'error',
+                        message: 'Не удалось включить камеру.',
+                    });
+                    break;
+            }
             setIsCameraAvailable(false);
             setIsCameraEnabled(false);
 
@@ -482,8 +506,6 @@ export function useMediaDevices(): UseMediaDevicesResult {
 
         setStream(nextStream);
         setIsCameraEnabled(false);
-        // Turning the camera off releases the track, but does not mean that
-        // the physical camera disappeared. It can be acquired again explicitly.
         setIsCameraAvailable(true);
 
         socket.emit('webrtc:media_state', {
@@ -502,18 +524,14 @@ export function useMediaDevices(): UseMediaDevicesResult {
      */
     return {
         stream,
-
         isMicrophoneEnabled,
         isCameraEnabled,
-
         isMicrophoneAvailable,
         isCameraAvailable,
-
         toggleMicrophone,
-
         enableCamera,
         disableCamera,
-
         error,
+        errorKey
     };
 }

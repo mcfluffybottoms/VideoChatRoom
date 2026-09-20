@@ -3,7 +3,11 @@ import { useNavigate, useParams } from 'react-router-dom';
 import './Room.css';
 import { socket } from '../../config/socket';
 import VideoGrid from './VideoGrid';
-import { Participant, RoomHistoryEntry } from '../../commons/dto';
+import {
+    NotificationStatus,
+    Participant,
+    RoomHistoryEntry,
+} from '../../commons/dto';
 import MessageList from './MessageList';
 import { isWebRTCSupported } from '../../commons/webrtc';
 import { useMediaDevices } from '../../hooks/useMediaDevices';
@@ -15,11 +19,6 @@ type RoomProps = {
     name: string;
 };
 
-type BannerStatus = {
-    type: 'success' | 'error';
-    message: string;
-};
-
 type RoomError = 'full' | 'server' | null;
 
 function Room({ name }: RoomProps) {
@@ -27,20 +26,15 @@ function Room({ name }: RoomProps) {
     const navigate = useNavigate();
 
     /*
-     * Banner state.
+     * notification state.
      */
-    const [banner, setBanner] = useState<BannerStatus | null>(null);
-    const [bannerKey, setBannerKey] = useState(0);
-
-    let persistentBanner: BannerStatus | null = null;
-
-    function showBanner(type: 'success' | 'error', message: string) {
-        setBanner({
-            type,
-            message,
-        });
-
-        setBannerKey((current) => current + 1);
+    const [notification, setnotification] = useState<NotificationStatus | null>(
+        null,
+    );
+    const [notificationKey, setNotificationKey] = useState(0);
+    function showError(v: NotificationStatus | null) {
+        setnotification(v);
+        setNotificationKey((current) => current + 1);
     }
 
     /*
@@ -49,10 +43,15 @@ function Room({ name }: RoomProps) {
     async function handleCopyRoomUrl() {
         try {
             await navigator.clipboard.writeText(window.location.href);
-
-            showBanner('success', 'Ссылка скопирована в буфер обмена!');
+            showError({
+                type: 'success',
+                message: 'Ссылка скопирована в буфер обмена!',
+            });
         } catch {
-            showBanner('error', 'Не удалось скопировать ссылку!');
+            showError({
+                type: 'error',
+                message: 'Не удалось скопировать ссылку!',
+            });
         }
     }
 
@@ -60,13 +59,9 @@ function Room({ name }: RoomProps) {
      * Room state.
      */
     const [participants, setParticipants] = useState<Participant[]>([]);
-
     const [messages, setMessages] = useState<RoomHistoryEntry[]>([]);
-
     const [text, setText] = useState('');
-
     const [selfId, setSelfId] = useState('');
-
     const [roomError, setRoomError] = useState<RoomError>(null);
 
     /*
@@ -110,15 +105,18 @@ function Room({ name }: RoomProps) {
         };
 
         const handleAlreadyJoined = () => {
-            showBanner('error', 'Вы уже в комнате.');
+            showError({ type: 'error', message: 'Вы уже в комнате.' });
         };
 
         const handleRateLimited = () => {
-            showBanner('error', 'Подождите, прежде чем слать новое сообщение.');
+            showError({
+                type: 'error',
+                message: 'Подождите, прежде чем слать новое сообщение.',
+            });
         };
 
         const handleRoomNotFound = () => {
-            showBanner('error', 'Такой комнаты нет.');
+            showError({ type: 'error', message: 'Такой комнаты нет.' });
         };
 
         const handleConnectError = (error: Error) => {
@@ -134,19 +132,20 @@ function Room({ name }: RoomProps) {
             });
         };
 
-        /*
-         * Clean up listeners installed by this component.
-         */
-        socket.off('room:joined', handleJoined);
-        socket.off('room:participants', handleParticipants);
-        socket.off('room:message', handleMessage);
-        socket.off('room:history', handleMessage);
-        socket.off('room:full', handleRoomFull);
-        socket.off('room:already_joined', handleAlreadyJoined);
-        socket.off('room:message_rate_limited', handleRateLimited);
-        socket.off('room:none_exist', handleRoomNotFound);
-        socket.off('connect_error', handleConnectError);
-        socket.off('connect', joinRoom);
+        const offSocketEvents = () => {
+            socket.off('room:joined', handleJoined);
+            socket.off('room:participants', handleParticipants);
+            socket.off('room:message', handleMessage);
+            socket.off('room:history', handleMessage);
+            socket.off('room:full', handleRoomFull);
+            socket.off('room:already_joined', handleAlreadyJoined);
+            socket.off('room:message_rate_limited', handleRateLimited);
+            socket.off('room:none_exist', handleRoomNotFound);
+            socket.off('connect_error', handleConnectError);
+            socket.off('connect', joinRoom);
+        }
+
+        offSocketEvents();
 
         socket.on('room:joined', handleJoined);
         socket.on('room:participants', handleParticipants);
@@ -164,18 +163,7 @@ function Room({ name }: RoomProps) {
             socket.connect();
         }
 
-        return () => {
-            socket.off('room:joined', handleJoined);
-            socket.off('room:participants', handleParticipants);
-            socket.off('room:message', handleMessage);
-            socket.off('room:history', handleMessage);
-            socket.off('room:full', handleRoomFull);
-            socket.off('room:already_joined', handleAlreadyJoined);
-            socket.off('room:message_rate_limited', handleRateLimited);
-            socket.off('room:none_exist', handleRoomNotFound);
-            socket.off('connect_error', handleConnectError);
-            socket.off('connect', joinRoom);
-        };
+        return offSocketEvents;
     }, [roomId, navigate, name]);
 
     /*
@@ -191,10 +179,10 @@ function Room({ name }: RoomProps) {
         }
 
         if (normalizedText.length > MAX_MESSAGE_LENGTH) {
-            showBanner(
-                'error',
-                `Сообщение слишком длинное. Максимум возможно ${MAX_MESSAGE_LENGTH} символов.`,
-            );
+            showError({
+                type: 'error',
+                message: `Сообщение слишком длинное. Максимум возможно ${MAX_MESSAGE_LENGTH} символов.`,
+            });
 
             return;
         }
@@ -228,6 +216,7 @@ function Room({ name }: RoomProps) {
         enableCamera,
         disableCamera,
         error: mediaError,
+        errorKey: mediaErrorKey,
         isCameraAvailable,
         isMicrophoneAvailable,
     } = useMediaDevices();
@@ -237,48 +226,23 @@ function Room({ name }: RoomProps) {
      */
     const isSupported = isWebRTCSupported();
 
-    const {
-        remoteStreams,
-        peerStates,
-        audioUnlocked,
-        audioNeedsGesture
-    } = useRoomWebRTC({
-        participants,
-        selfId,
-        stream,
-    });
+    const { remoteStreams, peerStates, audioUnlocked, audioNeedsGesture } =
+        useRoomWebRTC({
+            participants,
+            selfId,
+            stream,
+        });
 
     /*
      * Persistent errors.
      */
+    let isWebRTCSupportedNotification: NotificationStatus | null = null;
     if (!isSupported) {
-        persistentBanner = {
+        isWebRTCSupportedNotification = {
             type: 'error',
             message: 'WebRTC недоступен в этом браузере.',
         };
-    } else if (mediaError) {
-        persistentBanner = {
-            type: 'error',
-            message: mediaError,
-        };
     }
-
-    /*
-     * Temporary banner timeout.
-     */
-    // useEffect(() => {
-    //     if (!banner) {
-    //         return;
-    //     }
-
-    //     const timer = setTimeout(() => {
-    //         setBanner(null);
-    //     }, 2000);
-
-    //     return () => {
-    //         clearTimeout(timer);
-    //     };
-    // }, [banner]);
 
     /*
      * Room-level error pages.
@@ -329,22 +293,34 @@ function Room({ name }: RoomProps) {
                     Скопировать ссылку
                 </button>
 
-                {banner && (
+                {notification && (
                     <div
-                        key={bannerKey}
-                        className={`banner banner-${banner.type}`}
-                        role={banner.type === 'error' ? 'alert' : 'status'}
+                        key={notificationKey}
+                        className={`notification notification-${notification.type}`}
+                        role={
+                            notification.type === 'error' ? 'alert' : 'status'
+                        }
                     >
-                        {banner.message}
+                        {notification.message}
                     </div>
                 )}
 
-                {persistentBanner && (
+                {mediaError && (
                     <div
-                        className={`persistent-banner persistent-banner-${persistentBanner.type}`}
+                        key={mediaErrorKey}
+                        className={`persistent-notification persistent-notification-${mediaError.type}`}
                         role="alert"
                     >
-                        {persistentBanner.message}
+                        {mediaError.message}
+                    </div>
+                )}
+
+                {isWebRTCSupportedNotification && (
+                    <div
+                        className={`persistent-notification persistent-notification-${isWebRTCSupportedNotification.type}`}
+                        role="alert"
+                    >
+                        {isWebRTCSupportedNotification.message}
                     </div>
                 )}
 
@@ -362,16 +338,18 @@ function Room({ name }: RoomProps) {
                 {/* ================================================== */}
 
                 <section className="room-video">
-                    {selfId && <VideoGrid
-                        participants={participants}
-                        selfId={selfId}
-                        localStream={stream}
-                        remoteStreams={remoteStreams}
-                        peerStates={peerStates}
-                        microphoneEnabled={isMicrophoneEnabled}
-                        audioUnlocked={audioUnlocked}
-                        cameraEnabled={isCameraEnabled}
-                    />}
+                    {selfId && (
+                        <VideoGrid
+                            participants={participants}
+                            selfId={selfId}
+                            localStream={stream}
+                            remoteStreams={remoteStreams}
+                            peerStates={peerStates}
+                            microphoneEnabled={isMicrophoneEnabled}
+                            audioUnlocked={audioUnlocked}
+                            cameraEnabled={isCameraEnabled}
+                        />
+                    )}
 
                     {audioNeedsGesture && (
                         <p role="status">

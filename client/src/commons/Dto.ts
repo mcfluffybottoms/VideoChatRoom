@@ -30,3 +30,9 @@ export type RoomHistoryEntry =
           text: string;
           timestamp: number;
       };
+
+
+export type NotificationStatus = {
+    type: 'success' | 'error';
+    message: string;
+};

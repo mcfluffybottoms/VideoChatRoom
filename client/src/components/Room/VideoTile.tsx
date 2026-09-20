@@ -60,8 +60,6 @@ function VideoTile({
     const videoRef = useRef<HTMLVideoElement>(null);
     const [playBlocked, setPlayBlocked] = useState(false);
 
-    // Принудительный ре-рендер при изменении треков на месте
-    // (mute/unmute/ended/addtrack/removetrack без нового MediaStream).
     const [, forceRender] = useState(0);
 
     useEffect(() => {
@@ -91,9 +89,9 @@ function VideoTile({
         };
     }, [stream]);
 
+    // Проверяем, есть ли живые видео- и аудиотреки в потоке.
     const videoTracks = stream?.getVideoTracks() ?? [];
     const audioTracks = stream?.getAudioTracks() ?? [];
-
     const hasLiveVideo =
         !!stream &&
         videoTracks.some((t) => t.readyState === 'live' && t.enabled && !t.muted);
@@ -110,7 +108,7 @@ function VideoTile({
         ? hasLiveAudio && microphoneEnabled
         : hasLiveAudio && remoteAudioAvailable !== false;
 
-    // Метка состояния — только когда удалённого потока нет вообще.
+    // Если видео нет, то показываем аватарку. Если есть, то показываем видео.
     const hasRemoteStream = !isSelf && Boolean(stream);
     const stateLabel =
         !isSelf && !hasRemoteStream
@@ -123,7 +121,6 @@ function VideoTile({
                     : ' · Подключение…'
             : '';
 
-    // Регистрация video-элемента для remote-тайлов.
     useEffect(() => {
         const video = videoRef.current;
         if (!video || isSelf || !registerVideoElement) {
@@ -135,7 +132,6 @@ function VideoTile({
         };
     }, [peerId, isSelf, registerVideoElement]);
 
-    // Прикрепление MediaStream и запуск воспроизведения.
     useEffect(() => {
         const video = videoRef.current;
         if (!video) {
@@ -153,7 +149,6 @@ function VideoTile({
         video.autoplay = true;
         video.playsInline = true;
 
-        // Muted autoplay разрешён браузером.
         if (!isSelf) {
             video.muted = true;
         }
@@ -164,15 +159,12 @@ function VideoTile({
             .catch(() => setPlayBlocked(true));
 
         return () => {
-            // Треки не останавливаем — MediaStream принадлежит WebRTC.
             if (video.srcObject === stream) {
                 video.srcObject = null;
             }
         };
     }, [stream, isSelf]);
 
-    // Разблокировка/блокировка удалённого звука.
-    // Не трогает srcObject и не влияет на видимость видео.
     useEffect(() => {
         const video = videoRef.current;
         if (!video || !stream || isSelf) {
