@@ -71,21 +71,6 @@ function VideoGrid({
                 }
                 return { ...current, [from]: next };
             });
-            
-            // Удаляем записи ушедших участников.
-            const activeIds = new Set(participants.map((p) => p.id));
-            setRemoteMedia((current) => {
-                const next: Record<string, RemoteMediaState> = {};
-                let changed = false;
-                for (const [id, value] of Object.entries(current)) {
-                    if (activeIds.has(id)) {
-                        next[id] = value;
-                    } else {
-                        changed = true;
-                    }
-                }
-                return changed ? next : current;
-            });
         };
 
         socket.on('webrtc:media_state', handleMediaState);
