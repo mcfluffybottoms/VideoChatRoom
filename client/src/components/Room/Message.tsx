@@ -32,8 +32,8 @@ function Message({ entry }: MessageProps) {
     if (entry.type === 'system') {
         return (
             <div className="systemmessage">
-                <strong></strong> {participantName}{' '}
-                {formatHistoryStatus(entry.status)}
+                <strong>{participantName}</strong>
+                <span>{formatHistoryStatus(entry.status)}</span>
                 <time>{formatTime(entry.timestamp)}</time>
             </div>
         );
@@ -44,6 +44,7 @@ function Message({ entry }: MessageProps) {
             <strong>{entry.participantName}</strong>
             <span>{entry.text}</span>
             <time>{formatTime(entry.timestamp)}</time>
+            <hr />
         </div>
     );
 }
