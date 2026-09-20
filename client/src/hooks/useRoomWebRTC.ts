@@ -220,7 +220,13 @@ export function useRoomWebRTC({
                             return current;
                         }
 
-                        remoteStream.removeTrack(event.track);
+                        if (
+                            remoteStream
+                                .getTracks()
+                                .some((track) => track.id === event.track.id)
+                        ) {
+                            remoteStream.removeTrack(event.track);
+                        }
 
                         if (remoteStream.getTracks().length === 0) {
                             const next = { ...current };
@@ -228,7 +234,10 @@ export function useRoomWebRTC({
                             return next;
                         }
 
-                        return { ...current };
+                        return {
+                            ...current,
+                            [peerId]: remoteStream,
+                        };
                     });
                 };
             };

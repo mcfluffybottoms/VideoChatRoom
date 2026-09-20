@@ -94,7 +94,9 @@ function VideoTile({
 
     const hasLiveVideo =
         !!stream &&
-        videoTracks.some((t) => t.readyState === 'live' && t.enabled && !t.muted);
+        videoTracks.some(
+            (t) => t.readyState === 'live' && t.enabled && !t.muted,
+        );
 
     const hasLiveAudio =
         !!stream &&
@@ -133,6 +135,7 @@ function VideoTile({
 
     useEffect(() => {
         const video = videoRef.current;
+
         if (!video) {
             return;
         }
@@ -148,42 +151,30 @@ function VideoTile({
         video.autoplay = true;
         video.playsInline = true;
 
-        if (!isSelf) {
+        // Local stream must never produce sound.
+        if (isSelf) {
             video.muted = true;
+            return;
         }
+
+        // Remote audio is controlled only here.
+        video.muted = !audioEnabled;
 
         void video
             .play()
-            .then(() => setPlayBlocked(false))
-            .catch(() => setPlayBlocked(true));
+            .then(() => {
+                setPlayBlocked(false);
+            })
+            .catch(() => {
+                setPlayBlocked(true);
+            });
 
         return () => {
             if (video.srcObject === stream) {
                 video.srcObject = null;
             }
         };
-    }, [stream, isSelf]);
-
-    useEffect(() => {
-        const video = videoRef.current;
-        if (!video || !stream || isSelf) {
-            return;
-        }
-
-        if (!audioEnabled) {
-            video.muted = true;
-            if (video.paused) {
-                void video.play().catch(() => setPlayBlocked(true));
-            }
-            return;
-        }
-
-        video.muted = false;
-        void video
-            .play()
-            .then(() => setPlayBlocked(false))
-            .catch(() => setPlayBlocked(true));
-    }, [stream, audioEnabled, isSelf]);
+    }, [stream, isSelf, audioEnabled]);
 
     return (
         <div className="video-tile">

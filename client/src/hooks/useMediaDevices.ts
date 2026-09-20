@@ -21,6 +21,12 @@ type UseMediaDevicesResult = {
     errorKey: number;
 };
 
+const audioConstraints: MediaTrackConstraints = {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+};
+
 export function useMediaDevices(): UseMediaDevicesResult {
     const [stream, setStream] = useState<MediaStream | null>(null);
 
@@ -76,7 +82,7 @@ export function useMediaDevices(): UseMediaDevicesResult {
             // Microphone
             try {
                 audioStream = await navigator.mediaDevices.getUserMedia({
-                    audio: true,
+                    audio: audioConstraints,
                 });
             } catch {
                 microphoneWasUnavailable.current = true;
@@ -219,7 +225,7 @@ export function useMediaDevices(): UseMediaDevicesResult {
 
             try {
                 const newStream = await navigator.mediaDevices.getUserMedia({
-                    audio: true,
+                    audio: audioConstraints,
                 });
 
                 const newAudioTrack = newStream.getAudioTracks()[0];
@@ -233,8 +239,11 @@ export function useMediaDevices(): UseMediaDevicesResult {
                         return newStream;
                     }
 
-                    currentStream.addTrack(newAudioTrack);
-                    return currentStream;
+                    return new MediaStream([
+                        ...currentStream.getVideoTracks(),
+                        ...currentStream.getAudioTracks(),
+                        newAudioTrack,
+                    ]);
                 });
                 setIsMicrophoneAvailable(true);
                 setIsMicrophoneEnabled(true);
