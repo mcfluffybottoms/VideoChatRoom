@@ -1,7 +1,7 @@
 services:
   web:
     build: .
-    working_dir: /app/server
+    working_dir: /app
     ports:
       - "${HOST_PORT:-3000}:3000"
     environment:
