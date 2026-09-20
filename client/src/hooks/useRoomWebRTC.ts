@@ -167,44 +167,19 @@ export function useRoomWebRTC({
 
             startConnectionTimeout(peerId);
 
-            /*
-             * =========================================================
-             * ЯВНЫЕ ТРАНСИВЕРЫ
-             * =========================================================
-             *
-             * Создаём обе медиа-линии заранее, независимо от того,
-             * есть ли у нас локальные треки.
-             *
-             * direction: 'sendrecv' — мы и отправляем, и принимаем.
-             * Это позволяет:
-             * - принимать видео от удалённого пира, даже если у нас
-             *   нет своей камеры;
-             * - позже привязать локальный трек через replaceTrack,
-             *   не пересоздавая соединение.
-             *
-             * Если у пользователя гарантированно нет камеры и она
-             * никогда не появится, можно поставить 'recvonly'.
-             * Но 'sendrecv' безопаснее: он не мешает и оставляет
-             * возможность включить камеру позже.
-             */
+            // Создаём трансиверы сразу, чтобы в SDP были обе m-line.
             const audioTransceiver = pc.addTransceiver('audio', {
                 direction: 'sendrecv',
             });
-
             const videoTransceiver = pc.addTransceiver('video', {
                 direction: 'sendrecv',
             });
 
-            /*
-             * Привязываем текущие локальные треки, если они есть.
-             * replaceTrack(null) не удаляет m-line и не запускает
-             * renegotiation — просто говорит «по этой линии сейчас
-             * ничего не отправляем».
-             */
             const currentStream = streamRef.current;
             const localAudioTrack = currentStream?.getAudioTracks()[0] ?? null;
             const localVideoTrack = currentStream?.getVideoTracks()[0] ?? null;
 
+            // Привязываем локальные треки к трансиверам через replaceTrack.
             void (async () => {
                 try {
                     await audioTransceiver.sender.replaceTrack(localAudioTrack);
@@ -218,13 +193,7 @@ export function useRoomWebRTC({
                 }
             })();
 
-            /*
-             * Входящие треки.
-             *
-             * Собираем свежий MediaStream из живых треков, чтобы
-             * после замены камеры/трека <video> не остался привязан
-             * к мёртвому треку.
-             */
+            // Обработка удалённых треков и потоков.
             pc.ontrack = (event) => {
                 setRemoteStreams((current) => {
                     const next = new MediaStream();
@@ -259,17 +228,7 @@ export function useRoomWebRTC({
                 });
             };
 
-            /*
-             * Состояние соединения.
-             *
-             * Здесь же:
-             * - таймаут «Подключение…»;
-             * - ICE restart с кулдауном.
-             *
-             * Кулдаун обязателен: без TURN на строгом NAT PC будет
-             * падать в failed снова и снова, и без ограничения это
-             * превратится в лавину рестартов и signaling-шторм.
-             */
+            // Обработка изменения состояния соединения.
             pc.onconnectionstatechange = () => {
                 const state = pc.connectionState;
                 setPeerStates((current) => ({ ...current, [peerId]: state }));
@@ -283,10 +242,7 @@ export function useRoomWebRTC({
                 if (state === 'failed') {
                     clearConnectionTimeout(peerId);
 
-                    /*
-                     * ICE restart — только для реального failed
-                     * от браузера, не для нашего UI-таймаута.
-                     */
+                    // Автоматический ICE restart при падении соединения.
                     if (
                         pc.signalingState !== 'stable' ||
                         makingOffer.current.has(peerId)
@@ -333,7 +289,8 @@ export function useRoomWebRTC({
 
                 startConnectionTimeout(peerId);
             };
-
+            
+            // Это событие срабатывает, когда нужно создать новый offer для renegotiation.
             pc.onnegotiationneeded = async () => {
                 console.log(
                     '[neg needed]',
@@ -390,25 +347,7 @@ export function useRoomWebRTC({
         startConnectionTimeout,
     ]);
 
-    /*
-     * =============================================================
-     * РЕКОНСИЛЯЦИЯ ЛОКАЛЬНЫХ ТРЕКОВ
-     * =============================================================
-     *
-     * Срабатывает при каждом изменении локального MediaStream:
-     * включение/выключение микрофона, камеры, замена устройства.
-     *
-     * Трансиверы уже существуют (созданы в эффекте выше), поэтому
-     * здесь только replaceTrack. addTrack/addTransceiver не нужны.
-     *
-     * replaceTrack(null) безопасен: m-line остаётся, renegotiation
-     * не запускается, удалённый пир продолжает слать нам видео
-     * по video-трансиверу.
-     *
-     * Сериализация per-peer: если пир уже в процессе реконсиляции,
-     * пропускаем итерацию, чтобы не устроить одновременные
-     * replaceTrack на нескольких sender'ах одного PC.
-     */
+    // Реконсиляция локальных треков
     useEffect(() => {
         const audioTrack = stream?.getAudioTracks()[0] ?? null;
         const videoTrack = stream?.getVideoTracks()[0] ?? null;
@@ -418,11 +357,6 @@ export function useRoomWebRTC({
                 continue;
             }
 
-            /*
-             * Ищем трансиверы по kind receiver'а:
-             * receiver.track.kind — это то, что мы ожидаем получить.
-             * Он не зависит от того, привязан ли сейчас sender.
-             */
             const audioTransceiver = pc
                 .getTransceivers()
                 .find((t) => t.receiver.track?.kind === 'audio');
@@ -455,11 +389,7 @@ export function useRoomWebRTC({
         }
     }, [stream]);
 
-    /*
-     * =============================================================
-     * SIGNALING
-     * =============================================================
-     */
+    // Обработка входящих offer/answer/ice
     useEffect(() => {
         const onOffer = async ({
             from,
@@ -591,9 +521,7 @@ export function useRoomWebRTC({
         };
     }, [selfId]);
 
-    /*
-     * Закрытие всех PC при размонтировании.
-     */
+    // Очистка всех соединений при размонтировании компонента.
     useEffect(() => {
         const timeouts = connectionTimeouts.current;
         const restarts = lastIceRestart.current;
@@ -611,9 +539,7 @@ export function useRoomWebRTC({
         };
     }, []);
 
-    /*
-     * Разблокировка удалённого звука.
-     */
+    // Разблокировка воспроизведения удалённого аудио.
     const enableRemoteAudio = useCallback(async () => {
         setAudioUnlocked(true);
 

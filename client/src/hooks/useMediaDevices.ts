@@ -76,7 +76,7 @@ export function useMediaDevices(): UseMediaDevicesResult {
                 cameraWasUnavailable.current = true;
                 showError({
                     type: 'error',
-                    message: 'Не удалось включить камеру.',
+                    message: 'Не удалось включить камеру. Возможно, она выключена или отсутствует Возможно, она выключена или отсутствует.',
                 });
             }
 
@@ -89,7 +89,7 @@ export function useMediaDevices(): UseMediaDevicesResult {
                 microphoneWasUnavailable.current = true;
                 showError({
                     type: 'error',
-                    message: 'Не удалось включить микрофон.',
+                    message: 'Не удалось включить микрофон. Возможно, он выключен или отсутствует.',
                 });
             }
 
@@ -444,18 +444,19 @@ export function useMediaDevices(): UseMediaDevicesResult {
             });
 
             return true;
-        } catch (error) {
-            switch (error) {
+        } catch (error: Error | unknown) {
+            console.log(error)
+            switch (error.name) {
                 case 'NotAllowedError':
                     showError({
                         type: 'error',
-                        message: 'Доступ к камере запрещён.',
+                        message: 'Доступ к камере запрещён. Разрешите доступ в настройках браузера.',
                     });
                     break;
                 default:
                     showError({
                         type: 'error',
-                        message: 'Не удалось включить камеру.',
+                        message: 'Не удалось включить камеру. Возможно, она выключена или отсутствует',
                     });
                     break;
             }
