@@ -1,15 +1,5 @@
 # VideoChatRoom
 
-## Запуск локально
-
-```bash
-npm --prefix server install
-npm --prefix client install
-npm --prefix server run dev
-# в отдельном терминале
-npm --prefix client run dev
-```
-
 ## Docker
 
 Создайте `.env` (необязательно): `HOST_PORT=3000`, затем:
