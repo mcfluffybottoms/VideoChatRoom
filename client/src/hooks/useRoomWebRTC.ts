@@ -193,7 +193,6 @@ export function useRoomWebRTC({
                 }
             })();
 
-
             pc.ontrack = (event) => {
                 setRemoteStreams((current) => {
                     const remoteStream = current[peerId] ?? new MediaStream();
@@ -221,13 +220,7 @@ export function useRoomWebRTC({
                             return current;
                         }
 
-                        if (
-                            remoteStream
-                                .getTracks()
-                                .some((track) => track.id === event.track.id)
-                        ) {
-                            remoteStream.removeTrack(event.track);
-                        }
+                        remoteStream.removeTrack(event.track);
 
                         if (remoteStream.getTracks().length === 0) {
                             const next = { ...current };
@@ -235,10 +228,7 @@ export function useRoomWebRTC({
                             return next;
                         }
 
-                        return {
-                            ...current,
-                            [peerId]: remoteStream,
-                        };
+                        return { ...current };
                     });
                 };
             };
