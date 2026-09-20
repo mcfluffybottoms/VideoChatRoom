@@ -89,9 +89,9 @@ function VideoTile({
         };
     }, [stream]);
 
-    // Проверяем, есть ли живые видео- и аудиотреки в потоке.
     const videoTracks = stream?.getVideoTracks() ?? [];
     const audioTracks = stream?.getAudioTracks() ?? [];
+
     const hasLiveVideo =
         !!stream &&
         videoTracks.some((t) => t.readyState === 'live' && t.enabled && !t.muted);
@@ -108,7 +108,6 @@ function VideoTile({
         ? hasLiveAudio && microphoneEnabled
         : hasLiveAudio && remoteAudioAvailable !== false;
 
-    // Если видео нет, то показываем аватарку. Если есть, то показываем видео.
     const hasRemoteStream = !isSelf && Boolean(stream);
     const stateLabel =
         !isSelf && !hasRemoteStream

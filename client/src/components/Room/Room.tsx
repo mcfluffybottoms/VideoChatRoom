@@ -226,7 +226,7 @@ function Room({ name }: RoomProps) {
      */
     const isSupported = isWebRTCSupported();
 
-    const { remoteStreams, peerStates, audioUnlocked, audioNeedsGesture } =
+    const { remoteStreams, peerStates, audioUnlocked, enableRemoteAudio } =
         useRoomWebRTC({
             participants,
             selfId,
@@ -292,6 +292,15 @@ function Room({ name }: RoomProps) {
                 <button type="button" onClick={handleCopyRoomUrl}>
                     Скопировать ссылку
                 </button>
+                {!audioUnlocked && (
+                    <button
+                        type="button"
+                        className="media-button"
+                        onClick={enableRemoteAudio}
+                    >
+                        🔊 Разрешить звук участников
+                    </button>
+                )}
 
                 {notification && (
                     <div
@@ -349,13 +358,6 @@ function Room({ name }: RoomProps) {
                             audioUnlocked={audioUnlocked}
                             cameraEnabled={isCameraEnabled}
                         />
-                    )}
-
-                    {audioNeedsGesture && (
-                        <p role="status">
-                            Нажмите кнопку, чтобы разрешить воспроизведение
-                            звука.
-                        </p>
                     )}
                 </section>
 

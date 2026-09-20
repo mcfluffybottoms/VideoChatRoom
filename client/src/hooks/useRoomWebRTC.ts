@@ -193,28 +193,54 @@ export function useRoomWebRTC({
                 }
             })();
 
-            // Обработка удалённых треков и потоков.
+
             pc.ontrack = (event) => {
                 setRemoteStreams((current) => {
-                    const next = new MediaStream();
-                    const seen = new Set<string>();
+                    const remoteStream = current[peerId] ?? new MediaStream();
 
-                    const addLiveTrack = (track: MediaStreamTrack) => {
-                        if (track.readyState !== 'live' || seen.has(track.id)) {
-                            return;
-                        }
-                        seen.add(track.id);
-                        next.addTrack(track);
+                    if (
+                        event.track.readyState === 'live' &&
+                        !remoteStream
+                            .getTracks()
+                            .some((track) => track.id === event.track.id)
+                    ) {
+                        remoteStream.addTrack(event.track);
+                    }
+
+                    return {
+                        ...current,
+                        [peerId]: remoteStream,
                     };
-
-                    current[peerId]?.getTracks().forEach(addLiveTrack);
-                    event.streams.forEach((remoteStream) => {
-                        remoteStream.getTracks().forEach(addLiveTrack);
-                    });
-                    addLiveTrack(event.track);
-
-                    return { ...current, [peerId]: next };
                 });
+
+                event.track.onended = () => {
+                    setRemoteStreams((current) => {
+                        const remoteStream = current[peerId];
+
+                        if (!remoteStream) {
+                            return current;
+                        }
+
+                        if (
+                            remoteStream
+                                .getTracks()
+                                .some((track) => track.id === event.track.id)
+                        ) {
+                            remoteStream.removeTrack(event.track);
+                        }
+
+                        if (remoteStream.getTracks().length === 0) {
+                            const next = { ...current };
+                            delete next[peerId];
+                            return next;
+                        }
+
+                        return {
+                            ...current,
+                            [peerId]: remoteStream,
+                        };
+                    });
+                };
             };
 
             pc.onicecandidate = (event) => {
@@ -289,18 +315,9 @@ export function useRoomWebRTC({
 
                 startConnectionTimeout(peerId);
             };
-            
+
             // Это событие срабатывает, когда нужно создать новый offer для renegotiation.
             pc.onnegotiationneeded = async () => {
-                console.log(
-                    '[neg needed]',
-                    'peerId:', peerId,
-                    'selfId:', selfId,
-                    'cmp:', selfId.localeCompare(peerId),
-                    'signaling:', pc.signalingState,
-                    'remoteDesc:', !!pc.currentRemoteDescription,
-                    'localDesc:', !!pc.localDescription,
-                );
                 if (
                     pc.signalingState !== 'stable' ||
                     makingOffer.current.has(peerId)

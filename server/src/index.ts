@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import router from './routes/router';
-import { connectHandlers } from '../services/room-service';
+import { connectHandlers } from './services/room-service';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

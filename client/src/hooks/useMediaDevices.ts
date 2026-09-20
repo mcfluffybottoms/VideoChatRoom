@@ -40,14 +40,7 @@ export function useMediaDevices(): UseMediaDevicesResult {
     const cameraWasUnavailable = useRef(false);
     const microphoneWasUnavailable = useRef(false);
 
-    
-
-    /*
-     * Initial media setup.
-     *
-     * Camera and microphone are requested separately,
-     * so failure of one device does not prevent using the other.
-     */
+    // Запрос доступа к камере и микрофону при монтировании компонента.
     useEffect(() => {
         let currentStream: MediaStream | null = null;
 
@@ -161,50 +154,7 @@ export function useMediaDevices(): UseMediaDevicesResult {
     }, []);
 
     /*
-     * CAMERA
-     *
-     * Detect physical camera removal.
-     *
-     */
-    useEffect(() => {
-        if (!stream) {
-            return;
-        }
-
-        const videoTrack = stream.getVideoTracks()[0];
-
-        if (!videoTrack) {
-            return;
-        }
-
-        const handleEnded = () => {
-            cameraWasUnavailable.current = true;
-
-            const nextStream = new MediaStream();
-            stream.getAudioTracks().forEach((track) => {
-                nextStream.addTrack(track);
-            });
-
-            setStream(nextStream);
-            setIsCameraAvailable(false);
-            setIsCameraEnabled(false);
-
-            socket.emit('webrtc:media_state', {
-                videoEnabled: false,
-            });
-        };
-
-        videoTrack.addEventListener('ended', handleEnded);
-
-        return () => {
-            videoTrack.removeEventListener('ended', handleEnded);
-        };
-    }, [stream]);
-
-    /*
      * MICROPHONE
-     *
-     * Detect physical microphone removal.
      */
     useEffect(() => {
         if (!stream) {
@@ -236,11 +186,6 @@ export function useMediaDevices(): UseMediaDevicesResult {
         };
     }, [stream]);
 
-    /*
-     * MICROPHONE
-     *
-     * Detect microphone device changes.
-     */
     useEffect(() => {
         if (!navigator.mediaDevices) {
             return;
@@ -322,13 +267,6 @@ export function useMediaDevices(): UseMediaDevicesResult {
         };
     }, [stream]);
 
-    /*
-     * MICROPHONE
-     *
-     * Intentional ON/OFF.
-     *
-     * We use track.enabled instead of stop().
-     */
     function toggleMicrophone(): boolean | null {
         if (!stream) {
             return null;
@@ -359,11 +297,42 @@ export function useMediaDevices(): UseMediaDevicesResult {
 
     /*
      * CAMERA
-     *
-     *  detect camera device changes.
-     *  When the camera is physically removed, we stop the track and mark it as unavailable.
-     *  When the camera is physically restored, we can re-enable it by calling enableCamera().
     */
+    useEffect(() => {
+        if (!stream) {
+            return;
+        }
+
+        const videoTrack = stream.getVideoTracks()[0];
+
+        if (!videoTrack) {
+            return;
+        }
+
+        const handleEnded = () => {
+            cameraWasUnavailable.current = true;
+
+            const nextStream = new MediaStream();
+            stream.getAudioTracks().forEach((track) => {
+                nextStream.addTrack(track);
+            });
+
+            setStream(nextStream);
+            setIsCameraAvailable(false);
+            setIsCameraEnabled(false);
+
+            socket.emit('webrtc:media_state', {
+                videoEnabled: false,
+            });
+        };
+
+        videoTrack.addEventListener('ended', handleEnded);
+
+        return () => {
+            videoTrack.removeEventListener('ended', handleEnded);
+        };
+    }, [stream]);
+
     useEffect(() => {
         if (!navigator.mediaDevices) {
             return;
@@ -395,11 +364,6 @@ export function useMediaDevices(): UseMediaDevicesResult {
         };
     }, [isCameraAvailable]);
 
-    /*
-     * CAMERA
-     *
-     * Intentional ON.
-     */
     async function enableCamera(): Promise<boolean> {
         if (!navigator.mediaDevices?.getUserMedia) {
             return false;
@@ -445,21 +409,23 @@ export function useMediaDevices(): UseMediaDevicesResult {
 
             return true;
         } catch (error: Error | unknown) {
-            console.log(error)
-            switch (error.name) {
-                case 'NotAllowedError':
-                    showError({
-                        type: 'error',
-                        message: 'Доступ к камере запрещён. Разрешите доступ в настройках браузера.',
-                    });
-                    break;
-                default:
-                    showError({
-                        type: 'error',
-                        message: 'Не удалось включить камеру. Возможно, она выключена или отсутствует',
-                    });
-                    break;
+            if (error instanceof Error) {
+                switch (error.name) {
+                    case 'NotAllowedError':
+                        showError({
+                            type: 'error',
+                            message: 'Доступ к камере запрещён. Разрешите доступ в настройках браузера.',
+                        });
+                        break;
+                    default:
+                        showError({
+                            type: 'error',
+                            message: 'Не удалось включить камеру. Возможно, она выключена или отсутствует',
+                        });
+                        break;
+                }
             }
+
             setIsCameraAvailable(false);
             setIsCameraEnabled(false);
 
@@ -471,15 +437,6 @@ export function useMediaDevices(): UseMediaDevicesResult {
         }
     }
 
-    /*
-     * CAMERA
-     *
-     * Intentional OFF.
-     *
-     * A new MediaStream is returned so useRoomWebRTC reconciles the video
-     * sender. The old video track is stopped because this toggle represents
-     * releasing the camera; enabling it later acquires a fresh track.
-     */
     function disableCamera(): boolean {
         if (!stream) {
             return false;
@@ -516,13 +473,6 @@ export function useMediaDevices(): UseMediaDevicesResult {
         return true;
     }
 
-    /*
-     * Availability is based on readyState,
-     * NOT on enabled.
-     *
-     * Therefore an intentionally disabled camera/microphone
-     * is still considered available.
-     */
     return {
         stream,
         isMicrophoneEnabled,

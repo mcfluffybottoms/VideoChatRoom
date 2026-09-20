@@ -146,3 +146,6 @@ vite.config.ts.timestamp-*
 prd-design.md
 prd-tasks.md
 prd-video-chat-room.md
+
+certs/*.key
+certs/*.pem

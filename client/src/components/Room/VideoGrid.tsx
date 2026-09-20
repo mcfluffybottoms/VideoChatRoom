@@ -71,7 +71,7 @@ function VideoGrid({
                 }
                 return { ...current, [from]: next };
             });
-
+            
             // Удаляем записи ушедших участников.
             const activeIds = new Set(participants.map((p) => p.id));
             setRemoteMedia((current) => {

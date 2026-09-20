@@ -141,9 +141,13 @@
 }
 
 .messages {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    scrollbar-gutter: stable;
 }
 
 .message {
@@ -152,7 +156,14 @@
     gap: 8px;
 }
 
-.message time {
+.message > :not(time) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.message time,
+.systemmessage time {
     margin-left: auto;
     font-size: 12px;
 }
@@ -167,11 +178,9 @@
 
 .systemmessage-name {
     white-space: nowrap;
-}
-
-.systemmessage time {
-    margin-left: auto;
-    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 12ch;
 }
 
 /* error */

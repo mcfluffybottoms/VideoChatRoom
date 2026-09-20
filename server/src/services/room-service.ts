@@ -1,15 +1,15 @@
 import type { Server, Socket } from 'socket.io';
-import { Room } from '../models/Room';
-import type { Participant } from '../models/Participant';
-import { deleteRoom, getOrCreateRoom, getRoom } from '../data/room-repository';
-import { createChatMessage, HistoryStatus } from '../models/ChatMessage';
+import { Room } from '../../models/Room';
+import type { Participant } from '../../models/Participant';
+import { deleteRoom, getOrCreateRoom, getRoom } from '../../data/room-repository';
+import { createChatMessage, HistoryStatus } from '../../models/ChatMessage';
 import {
     addMessage,
     deleteMessages,
     deleteMessageTimestamp,
     getMessages,
     lastMessageTimestamp,
-} from '../data/message-repository';
+} from '../../data/message-repository';
 
 const MESSAGE_WINDOW_MS = 10_000;
 
